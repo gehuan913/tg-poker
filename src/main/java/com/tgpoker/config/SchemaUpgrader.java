@@ -55,7 +55,7 @@ public class SchemaUpgrader implements ApplicationRunner {
         }
     }
 
-    /** 用 JDBC 元数据判断列是否存在（大小写不敏感，兼容 H2/MySQL）。 */
+    /** 用 JDBC 元数据判断列是否存在（列名大小写不敏感）。 */
     private boolean hasColumn(String table, String column) {
         try (Connection c = dataSource.getConnection()) {
             DatabaseMetaData md = c.getMetaData();

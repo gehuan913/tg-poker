@@ -1,6 +1,6 @@
 # tg-poker · Telegram 德州 / 短牌 / 牛牛 Mini App
 
-前后端同目录单体工程：**Spring Boot 3.2.7 + JDK 21 + MyBatis-Plus + MySQL/H2**，
+前后端同目录单体工程：**Spring Boot 3.2.7 + JDK 21 + MyBatis-Plus + MySQL 8**，
 前端 **React 19 + TypeScript + Vite 6**，构建产物直接输出到 `src/main/resources/static`。
 
 业务范围对齐 `D:\sofa\buddy_space\tg-poker-miniapp\技术方案-TG德州竞技MiniApp.md`（v2.6）。
@@ -83,13 +83,13 @@ java -jar target\tg-poker.jar --server.port=8085
 |---|---|
 | `db/schema-mysql.sql` | MySQL 8.4 建库建表，索引写在建表语句内，`ENGINE=InnoDB` |
 | `db/data-mysql.sql` | 教学课程 / 训练题库 / 活动配置种子数据，带 `NOT EXISTS` 幂等判断 |
-| `src/main/resources/schema.sql` | 内置 H2 用（`--spring.profiles.active=h2`），每列带 `COMMENT` |
 
 **所有表、所有字段都有 COMMENT**，可直接在 Navicat / DBeaver 里看到中文说明。
 
 > `explain` 是 MySQL 保留字，`quiz_question` 里该列名必须写成 `` `explain` ``。
 
-> **改过表结构后**，H2 本地库要把 `./data` 清空再启动，否则旧表缺列会报错。
+> **改过表结构后**，同步更新 `db/schema-mysql.sql`。启动时 `spring.sql.init` 会执行它
+> （全部 `IF NOT EXISTS`，可重复执行），不需要手动删库。
 
 ---
 
@@ -255,6 +255,6 @@ web/
    写成反过来，本地测不出来，线上所有真实用户登录 401。
 2. **不要相信客户端传的 role**：服务端按真实座位判定，客户端只能"降级为旁观"。
 3. **短牌的 category 不能复用长牌常量**：长牌 `FLUSH=5/FULL_HOUSE=6`，短牌恰好相反。
-4. **H2/MySQL 默认隔离级别不同**：MySQL 是 REPEATABLE READ，连接初始化要降到 READ COMMITTED。
+4. **MySQL 默认隔离级别是 REPEATABLE READ**：连接初始化要降到 READ COMMITTED，否则间隙锁容易把并发行锁升级成死锁。
 5. **同一笔 tx_hash 只能入账一次**：靠唯一索引，不靠业务判断。
 6. **`SERVER__PORT` 会覆盖 `server.port`**：启动参数显式指定。

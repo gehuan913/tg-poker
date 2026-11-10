@@ -7,9 +7,8 @@ import java.util.Map;
 /**
  * MyBatis 返回 Map 时的字段名适配。
  *
- * <p>坑：H2（DATABASE_TO_LOWER=TRUE）会把未加引号的别名转小写，`AS vpipHands` 出来是
- * `vpiphands`；MySQL 则原样保留。所以 SQL 里统一用 snake_case 别名，再在 Java 侧转驼峰，
- * 两种库都稳定。</p>
+ * <p>SQL 里统一用 snake_case 别名，再在 Java 侧转驼峰：不依赖数据库对别名大小写的处理，
+ * 换驱动或换库时结果集字段名都稳定。</p>
  */
 public final class Maps {
 

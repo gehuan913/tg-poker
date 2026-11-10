@@ -30,10 +30,8 @@ application-*-local.yml
 .env.*
 
 # ---------- 本地运行时数据 ----------
-# H2 文件库、trace，以及上传/临时文件
+# 本地数据目录、上传/临时文件
 data/
-*.mv.db
-*.trace.db
 uploads/
 tmp/
 

@@ -6,8 +6,7 @@
     手牌-玩家维度查询。
     这里的 SQL 都要 join hand 表拿玩法、公牌、时间，属于"跨表 + 聚合"，
     放在 XML 里比注解可读（注解写法需要大量字符串拼接）。
-    别名统一 snake_case：H2（DATABASE_TO_LOWER）会把未加引号的驼峰别名转小写，
-    MySQL 不会；用 snake_case + Java 侧转驼峰，两边都稳。
+    别名统一 snake_case，Java 侧再转驼峰（Maps.camel），不依赖数据库对别名的处理。
 -->
 <mapper namespace="com.tgpoker.mapper.HandPlayerMapper">
 
