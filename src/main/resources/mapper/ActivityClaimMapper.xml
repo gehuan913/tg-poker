@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    活动领取记录。
+    幂等键是 (activity_code, user_id, biz_id)：
+    大牌奖励用手牌 ID、推荐红包用被邀请人 ID、每日活动用日期，
+    这样同一天重复点、同一条业务重复调都不会重复发钱。
+-->
+<mapper namespace="com.tgpoker.mapper.ActivityClaimMapper">
+
+    <!-- 同一业务键是否已领过 -->
+    <select id="countByBiz" resultType="int">
+        SELECT COUNT(*)
+          FROM activity_claim
+         WHERE user_id = #{userId}
+           AND activity_code = #{code}
+           AND biz_id = #{bizId}
+    </select>
+
+    <!-- 今日该活动领取次数，用于每日限次 -->
+    <select id="countToday" resultType="int">
+        SELECT COUNT(*)
+          FROM activity_claim
+         WHERE user_id = #{userId}
+           AND activity_code = #{code}
+    </select>
+
+</mapper>

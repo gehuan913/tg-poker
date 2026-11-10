@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    手牌-玩家维度查询。
+    这里的 SQL 都要 join hand 表拿玩法、公牌、时间，属于"跨表 + 聚合"，
+    放在 XML 里比注解可读（注解写法需要大量字符串拼接）。
+    别名统一 snake_case：H2（DATABASE_TO_LOWER）会把未加引号的驼峰别名转小写，
+    MySQL 不会；用 snake_case + Java 侧转驼峰，两边都稳。
+-->
+<mapper namespace="com.tgpoker.mapper.HandPlayerMapper">
+
+    <!--
+        按玩法聚合战绩。
+        总输赢 = 牌局输赢(net) + 保险净额(insurance_net)，
+        与"我的"数据面板口径一致（技术方案 §2.6）。
+        vpip_hands / pfr_hands 是"翻前入池/加注"的手数，除总手数得到百分比。
+    -->
+    <select id="stats" resultType="map">
+        SELECT COUNT(*)                                AS hands,
+               COALESCE(SUM(p.net), 0)                 AS net,
+               COALESCE(SUM(p.insurance_net), 0)       AS insurance_net,
+               COALESCE(SUM(p.vpip), 0)                AS vpip_hands,
+               COALESCE(SUM(p.pfr), 0)                 AS pfr_hands
+          FROM hand_player p
+          JOIN hand h ON h.hand_id = p.hand_id
+         WHERE p.user_id = #{userId}
+           AND h.variant = #{variant}
+    </select>
+
+    <!-- 最近牌局：带玩法、公牌、起止筹码，用于"我的-最近牌局"列表 -->
+    <select id="recent" resultType="map">
+        SELECT p.hand_id       AS hand_id,
+               p.seat,
+               p.hole_cards    AS hole_cards,
+               p.net,
+               p.start_stack   AS start_stack,
+               p.end_stack     AS end_stack,
+               p.insurance_net AS insurance_net,
+               h.variant,
+               h.board,
+               h.started_at    AS started_at
+          FROM hand_player p
+          JOIN hand h ON h.hand_id = p.hand_id
+         WHERE p.user_id = #{userId}
+         ORDER BY h.started_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <!--
+        最近手牌的底牌与公牌，只取已结算的（ended_at 非空）。
+        大牌奖励判定用它：拿 hole_cards + board 复算牌型，四条及以上才发奖。
+    -->
+    <select id="recentCards" resultType="map">
+        SELECT p.hand_id    AS hand_id,
+               p.hole_cards AS hole_cards,
+               h.board
+          FROM hand_player p
+          JOIN hand h ON h.hand_id = p.hand_id
+         WHERE p.user_id = #{userId}
+           AND h.ended_at IS NOT NULL
+         ORDER BY h.started_at DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

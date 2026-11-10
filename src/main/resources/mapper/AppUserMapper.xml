@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    用户搜索。
+    发红包时要"搜昵称或 ID"，两种输入都要支持：
+      - 纯数字：按 id 精确匹配（raw 传原串，CAST 成 CHAR 比较）；
+      - 其他：昵称模糊匹配（keyword 传 %xxx%）。
+    LIKE 的 % 由 Java 侧拼好，避免在 XML 里写 CONCAT 导致 H2/MySQL 行为差异。
+-->
+<mapper namespace="com.tgpoker.mapper.AppUserMapper">
+
+    <select id="search" resultType="com.tgpoker.model.AppUser">
+        SELECT id, tg_id, username, nick, avatar, inviter_id, vip_level, created_at
+          FROM app_user
+         WHERE id &lt;&gt; #{excludeId}
+           AND (nick LIKE #{keyword} OR CAST(id AS CHAR) = #{raw})
+         ORDER BY id ASC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

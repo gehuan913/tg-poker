@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover 是安全区 CSS 变量生效的前提，别删 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1117" />
+  <title>KK 德州</title>
+  <!-- Telegram 的 WebView 也会请求 favicon，空 data URI 可以避免 /favicon.ico 404 -->
+  <link rel="icon" href="data:," />
+
+  <!-- 官方 SDK。Telegram 客户端注入 window.Telegram.WebApp；普通浏览器里没有，走 dev 登录 -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <link rel="stylesheet" href="/theme.css" />
+  <link rel="stylesheet" href="/miniapp-native.css" />
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

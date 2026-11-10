@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    牛牛战绩聚合。
+    口径：一局一人一行；庄家也有行（bet=0，net=本局庄家净输赢）。
+    win_rounds 只统计 net>0 的局，平局不计入。
+-->
+<mapper namespace="com.tgpoker.mapper.NiuniuResultMapper">
+
+    <select id="stats" resultType="map">
+        SELECT COUNT(*)                                              AS rounds,
+               COALESCE(SUM(net), 0)                                 AS net,
+               COALESCE(SUM(CASE WHEN net &gt; 0 THEN 1 ELSE 0 END), 0) AS win_rounds,
+               COALESCE(SUM(CASE WHEN banker = 1 THEN 1 ELSE 0 END), 0) AS banker_rounds
+          FROM niuniu_result
+         WHERE user_id = #{userId}
+    </select>
+
+</mapper>

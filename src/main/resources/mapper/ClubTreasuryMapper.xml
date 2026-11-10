@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    俱乐部金库。
+    保险的承保方，赔付从这里出、保费进这里。
+    apply 用 balance + delta >= 0 做条件更新，负数时余额不足会直接失败，
+    避免把金库扣成负数（穿仓）。
+-->
+<mapper namespace="com.tgpoker.mapper.ClubTreasuryMapper">
+
+    <!-- delta 正数=保费入账，负数=赔付出账；返回 0 表示余额不足或俱乐部不存在 -->
+    <update id="apply">
+        UPDATE club_treasury
+           SET balance = balance + #{delta},
+               version = version + 1
+         WHERE club_id = #{clubId}
+           AND balance + #{delta} &gt;= 0
+    </update>
+
+</mapper>

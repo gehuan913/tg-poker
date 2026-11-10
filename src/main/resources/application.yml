@@ -1,0 +1,146 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: tg-poker
+
+  # 默认连本地 MySQL；想用内置 H2 启动加 --spring.profiles.active=h2
+  # local 是可选的本地私密配置（application-local.yml，不入库），不存在也不会报错
+  profiles:
+    active: mysql,local
+
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jackson:
+    default-property-inclusion: non_null
+
+  # 静态资源（含 index.html）每次都必须回源校验，
+  # 否则 Telegram WebView 会长时间用旧的 index.html，改完前端看不到效果
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+          must-revalidate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  # 复杂 SQL（聚合、join、条件更新）统一放在 XML 里，接口只留签名
+  mapper-locations: classpath*:mapper/*.xml
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+app:
+  # 本地开发：允许浏览器用 devId 模拟用户。上线前必须改成 false！
+  dev-mode: true
+  # 兼容旧配置：实际验签读 app.tg.bot-token，这里留空即可
+  bot-token: ""
+  # 新用户首次登录赠送的测试额度（micro-USDT，1 USDT = 1_000_000）
+  new-user-bonus: 1000000000
+  # 静态资源走 CDN 时改这里（本地留空，从 classpath:/static 读）
+  asset-base-url: ""
+
+  auth:
+    # initData 的 auth_date 允许偏差（秒）。超过即视为重放，默认 1 小时
+    max-age-seconds: 3600
+
+  admin:
+    # 运营接口（暂停/恢复/解散牌桌）的固定 token，生产用环境变量注入
+    token: ${KK_ADMIN_TOKEN:kk-admin-2026}
+
+  blockchain:
+    # false = 模拟模式（地址不可用于真实充值）。接公司平台后置 true
+    ready: false
+    # 回调验签密钥，与公司平台约定；生产用环境变量注入
+    callback-secret: ${BC_CALLBACK_SECRET:dev-callback-secret}
+
+  tg:
+    # 总开关：不测 Bot 时置 false，避免启动时因网络不通刷错误日志
+    enabled: true
+    # 真实 token 写在 application-local.yml（已被 .gitignore 排除），或用环境变量 TG_BOT_TOKEN 注入
+    # 不要把 token 提交到仓库：GitHub 的 push protection 会直接拒绝推送
+    bot-token: "${TG_BOT_TOKEN:}"
+    # Bot 用户名，用于生成邀请链接 t.me/{username}?startapp=xxx
+    bot-username: "momofayu123"
+    # Mini App 地址：Telegram 硬性要求 HTTPS。
+    # 本地联调时装了 cloudflared 就把临时域名填这里，例如 https://xxx.trycloudflare.com
+    # 留空时 Bot 仍能收发消息，但不会显示"开始游戏"按钮（避免 Telegram 直接拒收非 HTTPS 地址）
+    mini-app-url: "https://revenue-valium-clients-roster.trycloudflare.com"
+    # 欢迎卡顶部配图（HTTPS 的图片地址，如 CDN 上的品牌图）；留空则发纯文本欢迎语
+    welcome-image-url: ""
+    # 观战群组 / 官方频道（可留空；填了才会出现对应按钮）
+    group-url: ""
+    channel-url: ""
+    # 国内网络直连 api.telegram.org 常超时；需要代理时填这里
+    # 例：proxy-host: 127.0.0.1 / proxy-port: 7890 / proxy-type: HTTP（或 SOCKS）
+    proxy-host: ""
+    proxy-port: 0
+    proxy-type: "HTTP"
+
+  # OSS / S3：预留给头像、牌背、音效等静态资源上 CDN 用，本地默认不启用
+  oss:
+    enabled: false
+    bucket: lovevideo-sebo-online
+    endpoint: https://s3.amazonaws.com
+    region: us-east-1
+    # 真实密钥放 application-local.yml 或环境变量，绝不写进仓库
+    access-key: ${OSS_ACCESS_KEY:}
+    secret-key: ${OSS_SECRET_KEY:}
+    public-endpoint: https://lovevideo-sebo-online.s3.amazonaws.com
+
+logging:
+  level:
+    root: INFO
+    com.tgpoker: DEBUG
+    org.springframework.web.socket: INFO
+
+---
+# MySQL 配置（默认 profile）
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/tgpoker?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: root
+  # 启动时执行 MySQL 版建表脚本（全部 IF NOT EXISTS，可重复执行）。
+  # 新增表/字段只要改 db/schema-mysql.sql，重启即生效，避免"代码新了库没新"。
+  sql:
+    init:
+      mode: always
+      schema-locations: file:./db/schema-mysql.sql
+      continue-on-error: false
+
+---
+# 内置 H2（免装库，数据落在 ./data/tgpoker.mv.db）
+spring:
+  config:
+    activate:
+      on-profile: h2
+  datasource:
+    url: jdbc:h2:file:./data/tgpoker;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    风控事件。
+    规则命中先落库（伙牌/多开/异常入池等），后续再跑模型；
+    现在只给"我的-安全中心"和运营排查用。
+-->
+<mapper namespace="com.tgpoker.mapper.RiskEventMapper">
+
+    <!-- 某人最近 20 条风控事件 -->
+    <select id="recent" resultType="map">
+        SELECT kind, score, detail, created_at
+          FROM risk_event
+         WHERE user_id = #{userId}
+         ORDER BY id DESC
+         LIMIT 20
+    </select>
+
+</mapper>

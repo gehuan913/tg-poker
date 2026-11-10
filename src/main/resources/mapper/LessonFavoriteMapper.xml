@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    教学收藏。
+    只有三列，没有实体类；直接写 SQL 更省事。
+    join lesson 是为了列表页一次拿全（标题、封面、时长），避免 N+1。
+-->
+<mapper namespace="com.tgpoker.mapper.LessonFavoriteMapper">
+
+    <!-- 收藏（重复收藏会因主键冲突失败，调用方吞掉即可） -->
+    <insert id="insert">
+        INSERT INTO lesson_favorite (user_id, lesson_id)
+        VALUES (#{userId}, #{lessonId})
+    </insert>
+
+    <!-- 取消收藏 -->
+    <delete id="delete">
+        DELETE FROM lesson_favorite
+         WHERE user_id = #{userId}
+           AND lesson_id = #{lessonId}
+    </delete>
+
+    <!-- 我的收藏列表，按收藏时间倒序 -->
+    <select id="list" resultType="map">
+        SELECT l.id,
+               l.title,
+               l.summary,
+               l.cover,
+               l.media_type,
+               l.media_url,
+               l.duration_sec
+          FROM lesson_favorite f
+          JOIN lesson l ON l.id = f.lesson_id
+         WHERE f.user_id = #{userId}
+         ORDER BY f.created_at DESC
+    </select>
+
+</mapper>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    俱乐部成员。
+    club_member 是 (club_id, user_id) 复合主键，没有单列 @TableId，
+    所以"按人查""按俱乐部查"都写成显式 SQL，避免 BaseMapper.selectById 踩空。
+-->
+<mapper namespace="com.tgpoker.mapper.ClubMemberMapper">
+
+    <!-- 查某人在某俱乐部的成员记录，用于重复加入判断 -->
+    <select id="find" resultType="com.tgpoker.model.ClubMember">
+        SELECT club_id, user_id, role, status, joined_at
+          FROM club_member
+         WHERE club_id = #{clubId}
+           AND user_id = #{userId}
+    </select>
+
+    <!-- 某人加入的所有俱乐部，用于"我的俱乐部" -->
+    <select id="byUser" resultType="com.tgpoker.model.ClubMember">
+        SELECT club_id, user_id, role, status, joined_at
+          FROM club_member
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- 俱乐部成员列表（只取生效状态） -->
+    <select id="members" resultType="map">
+        SELECT user_id, role, status, joined_at
+          FROM club_member
+         WHERE club_id = #{clubId}
+           AND status = 'ACTIVE'
+         ORDER BY joined_at ASC
+    </select>
+
+    <!-- 有效成员数，用于大厅展示 -->
+    <select id="countMembers" resultType="int">
+        SELECT COUNT(*)
+          FROM club_member
+         WHERE club_id = #{clubId}
+           AND status = 'ACTIVE'
+    </select>
+
+</mapper>
