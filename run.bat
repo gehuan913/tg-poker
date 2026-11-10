@@ -11,7 +11,7 @@ cd /d "%~dp0"
 echo ============================================
 echo   tg-poker  -  Telegram 德州扑克 Mini App
 echo   JDK : %JAVA_HOME%
-echo   URL : http://localhost:8080
+echo   URL : http://localhost:8085
 echo ============================================
 echo.
 
@@ -29,9 +29,9 @@ echo 正在打包（跳过测试）...
 call "%MVN%" -B -DskipTests package
 if errorlevel 1 goto fail
 
-echo 启动中，浏览器打开 http://localhost:8080
+echo 启动中，浏览器打开 http://localhost:8085
 echo.
-"%JAVA_HOME%\bin\java.exe" -jar target\tg-poker.jar --server.port=8080
+"%JAVA_HOME%\bin\java.exe" -jar target\tg-poker.jar --server.port=8085
 goto end
 
 :fail

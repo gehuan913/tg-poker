@@ -44,13 +44,13 @@
 ```bat
 set JAVA_HOME=D:\jdk21
 mvn -DskipTests package
-java -jar target\tg-poker.jar --server.port=8080
+java -jar target\tg-poker.jar --server.port=8085
 ```
 
-> **必须显式带 `--server.port=8080`**。本机环境存在 `SERVER__PORT` 变量，
+> **必须显式带 `--server.port=8085`**。本机环境存在 `SERVER__PORT` 变量，
 > Spring 会把它当成 `server.port`，不覆盖会跟沙箱服务抢端口。
 
-浏览器打开 `http://localhost:8080` 即可试玩（浏览器模式自动建号、送 1000 USDT）。
+浏览器打开 `http://localhost:8085` 即可试玩（浏览器模式自动建号、送 1000 USDT）。
 
 ### 2. 前端（改 UI 时）
 
@@ -76,7 +76,7 @@ mysql -uroot -p < db\schema-mysql.sql
 :: 2) 灌种子数据（幂等，可重复执行）
 mysql -uroot -p < db\data-mysql.sql
 :: 3) 直接启动，默认走 mysql profile
-java -jar target\tg-poker.jar --server.port=8080
+java -jar target\tg-poker.jar --server.port=8085
 ```
 
 | 文件 | 用途 |
@@ -115,7 +115,7 @@ app:
 **Mini App 需要 HTTPS。** 本地跑（不上云）用临时隧道即可：
 
 ```bat
-cloudflared tunnel --url http://localhost:8080
+cloudflared tunnel --url http://localhost:8085
 ```
 
 把拿到的 `https://xxx.trycloudflare.com` 填进 `app.tg.mini-app-url` 并重启，
