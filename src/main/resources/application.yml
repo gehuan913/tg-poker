@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8085
   servlet:
     encoding:
       charset: UTF-8
@@ -9,8 +9,8 @@ spring:
   application:
     name: tg-poker
 
-  # 默认连本地 MySQL；想用内置 H2 启动加 --spring.profiles.active=h2
-  # local 是可选的本地私密配置（application-local.yml，不入库），不存在也不会报错
+  # 数据库固定用 MySQL（项目不再内置 H2）
+  # local 加载 application-local.yml（已 gitignore），放 Bot token / OSS 密钥等私密配置
   profiles:
     active: mysql,local
 
@@ -59,6 +59,13 @@ app:
     # 运营接口（暂停/恢复/解散牌桌）的固定 token，生产用环境变量注入
     token: ${KK_ADMIN_TOKEN:kk-admin-2026}
 
+  # 客服与品牌信息，前端从 /api/app/config 读取
+  support:
+    name: 在线客服
+    url: https://t.me/momofayu123
+  brand:
+    name: 永旺德州
+
   blockchain:
     # false = 模拟模式（地址不可用于真实充值）。接公司平台后置 true
     ready: false
@@ -68,15 +75,14 @@ app:
   tg:
     # 总开关：不测 Bot 时置 false，避免启动时因网络不通刷错误日志
     enabled: true
-    # 真实 token 写在 application-local.yml（已被 .gitignore 排除），或用环境变量 TG_BOT_TOKEN 注入
-    # 不要把 token 提交到仓库：GitHub 的 push protection 会直接拒绝推送
+    # 真实 token 放 application-local.yml（已 gitignore）或环境变量 TG_BOT_TOKEN
     bot-token: "${TG_BOT_TOKEN:}"
     # Bot 用户名，用于生成邀请链接 t.me/{username}?startapp=xxx
     bot-username: "momofayu123"
     # Mini App 地址：Telegram 硬性要求 HTTPS。
     # 本地联调时装了 cloudflared 就把临时域名填这里，例如 https://xxx.trycloudflare.com
     # 留空时 Bot 仍能收发消息，但不会显示"开始游戏"按钮（避免 Telegram 直接拒收非 HTTPS 地址）
-    mini-app-url: "https://revenue-valium-clients-roster.trycloudflare.com"
+    mini-app-url: "https://munich-obtain-shirt-admission.trycloudflare.com"
     # 欢迎卡顶部配图（HTTPS 的图片地址，如 CDN 上的品牌图）；留空则发纯文本欢迎语
     welcome-image-url: ""
     # 观战群组 / 官方频道（可留空；填了才会出现对应按钮）
@@ -94,7 +100,7 @@ app:
     bucket: lovevideo-sebo-online
     endpoint: https://s3.amazonaws.com
     region: us-east-1
-    # 真实密钥放 application-local.yml 或环境变量，绝不写进仓库
+    # 真实密钥只在 application-local.yml 或环境变量里，绝不写进仓库
     access-key: ${OSS_ACCESS_KEY:}
     secret-key: ${OSS_SECRET_KEY:}
     public-endpoint: https://lovevideo-sebo-online.s3.amazonaws.com
@@ -106,7 +112,7 @@ logging:
     org.springframework.web.socket: INFO
 
 ---
-# MySQL 配置（默认 profile）
+# MySQL 配置（唯一数据源，项目不再内置 H2）
 spring:
   config:
     activate:
@@ -123,24 +129,3 @@ spring:
       mode: always
       schema-locations: file:./db/schema-mysql.sql
       continue-on-error: false
-
----
-# 内置 H2（免装库，数据落在 ./data/tgpoker.mv.db）
-spring:
-  config:
-    activate:
-      on-profile: h2
-  datasource:
-    url: jdbc:h2:file:./data/tgpoker;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:schema.sql
-      continue-on-error: false
-  h2:
-    console:
-      enabled: true
-      path: /h2-console

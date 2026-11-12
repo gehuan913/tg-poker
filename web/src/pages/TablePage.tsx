@@ -76,6 +76,7 @@ export function TablePage({ tableId }: { tableId: string }) {
         <div className="tt-meta">
           {v.variantLabel} · {v.smallBlind > 0 ? `${fmt(v.smallBlind)}/${fmt(v.bigBlind)}` : v.anteLabel}
           {v.straddle ? ` · Straddle ${fmt(v.straddleAmount || 0)}` : ''}
+          {v.insuranceEnabled && <span className="ins-badge" style={{ marginLeft: 6 }}>保险</span>}
           {v.runningMinutes !== undefined && <span className="tt-run"> · 已运行 {hm(v.runningMinutes)}</span>}
         </div>
         <div

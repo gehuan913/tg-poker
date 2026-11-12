@@ -63,6 +63,15 @@ public class FairController {
         return ApiResponse.ok(fairService.verify(handId));
     }
 
+    /**
+     * L3 自助取证：返回完整牌序与所有人底牌，仅限参与本手的玩家，每日 10 次。
+     */
+    @GetMapping("/hand/{handId}/bundle")
+    public ApiResponse<Map<String, Object>> bundle(@PathVariable String handId,
+                                                   @RequestAttribute("userId") Long userId) {
+        return ApiResponse.ok(fairService.disputeBundle(handId, userId));
+    }
+
     /** 供前端展示的算法说明，避免玩家只能"信平台"。 */
     @GetMapping("/algorithm")
     public ApiResponse<Map<String, Object>> algorithm() {

@@ -51,6 +51,7 @@ public class MeController {
         m.put("inviterId", u == null ? null : u.getInviterId());
         m.put("vipLevel", u == null || u.getVipLevel() == null ? 0 : u.getVipLevel());
         m.put("insuranceOptIn", u == null || u.getInsuranceOptIn() == null || u.getInsuranceOptIn() != 0);
+        m.put("hasPayPwd", u != null && u.getPayPwdHash() != null && !u.getPayPwdHash().isBlank());
         m.put("inviteCode", activityService.inviteCode(userId));
 
         Map<String, Object> longStats = statsOf(userId, "LONG");
@@ -133,6 +134,24 @@ public class MeController {
         boolean on = body.get("on") == null || Boolean.parseBoolean(String.valueOf(body.get("on")));
         userService.setInsuranceOptIn(userId, on);
         return ApiResponse.ok(Map.of("insuranceOptIn", on));
+    }
+
+    /** 设置 / 重置支付密码（6 位数字）。 */
+    @PostMapping("/pay-password")
+    public ApiResponse<Map<String, Object>> setPayPassword(@RequestAttribute("userId") Long userId,
+                                                           @RequestBody Map<String, Object> body) {
+        String pwd = body.get("pwd") == null ? "" : String.valueOf(body.get("pwd"));
+        userService.setPayPassword(userId, pwd);
+        return ApiResponse.ok(Map.of("hasPayPwd", true));
+    }
+
+    /** 校验支付密码（提现前二次确认用）。 */
+    @PostMapping("/pay-password/verify")
+    public ApiResponse<Map<String, Object>> verifyPayPassword(@RequestAttribute("userId") Long userId,
+                                                              @RequestBody Map<String, Object> body) {
+        String pwd = body.get("pwd") == null ? "" : String.valueOf(body.get("pwd"));
+        boolean ok = userService.checkPayPassword(userId, pwd);
+        return ApiResponse.ok(Map.of("ok", ok));
     }
 
     /** 修改昵称 / 绑定邀请码。 */    @PostMapping("/profile")

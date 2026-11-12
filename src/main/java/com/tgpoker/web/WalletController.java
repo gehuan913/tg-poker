@@ -33,6 +33,7 @@ public class WalletController {
 
     private final WalletService walletService;
     private final BlockchainService blockchainService;
+    private final com.tgpoker.service.UserService userService;
     private final RedPacketService redPacketService;
 
     @Value("${app.blockchain.ready:false}")
@@ -97,6 +98,13 @@ public class WalletController {
                                                      @RequestBody Map<String, Object> body) {
         long amount = Long.parseLong(String.valueOf(body.getOrDefault("amount", "0")));
         String address = body.get("address") == null ? "" : String.valueOf(body.get("address"));
+        // 已设置支付密码的账号，提现必须带正确密码
+        if (userService.hasPayPassword(userId)) {
+            String pwd = body.get("payPwd") == null ? "" : String.valueOf(body.get("payPwd"));
+            if (!userService.checkPayPassword(userId, pwd)) {
+                throw new IllegalArgumentException("支付密码错误");
+            }
+        }
         return ApiResponse.ok(blockchainService.requestWithdraw(userId, address, amount));
     }
 

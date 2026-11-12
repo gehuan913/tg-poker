@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../api.ts';
 import { useApp } from '../store.ts';
 import type { LedgerItem } from '../types.ts';
@@ -20,6 +21,10 @@ export function Wallet() {
   const [toUser, setToUser] = useState<any>(null);
   const [rpAmt, setRpAmt] = useState('1');
   const [rpMemo, setRpMemo] = useState('');
+  const [qr, setQr] = useState('');
+  const [wAddr, setWAddr] = useState('');
+  const [wAmt, setWAmt] = useState('10');
+  const [wPwd, setWPwd] = useState('');
 
   useEffect(() => {
     refreshMe();
@@ -30,6 +35,17 @@ export function Wallet() {
     api<any[]>('/api/wallet/redpackets').then(setPackets).catch(() => setPackets([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 地址变化时重新生成二维码；失败就不显示图，只留复制
+  useEffect(() => {
+    if (!addr?.address) {
+      setQr('');
+      return;
+    }
+    QRCode.toDataURL(String(addr.address), { width: 220, margin: 1, errorCorrectionLevel: 'M' })
+      .then(setQr)
+      .catch(() => setQr(''));
+  }, [addr?.address]);
 
   return (
     <>
@@ -76,19 +92,39 @@ export function Wallet() {
       {tab === 'deposit' && (
         <>
           <div className="card">
-            <div className="card-title">我的专属充值地址</div>
-            <div className="addr-box mono">{addr?.address || '加载中…'}</div>
+            <div className="card-title">扫码充值</div>
+            {qr
+              ? <img className="qr-img" src={qr} alt="充值地址二维码" />
+              : <div className="empty">二维码生成中…</div>}
+            <div className="addr-box mono" style={{ marginTop: 10 }}>{addr?.address || '加载中…'}</div>
             <div className="row" style={{ marginTop: 10 }}>
               <span className="small muted">{addr?.network} · 最小 {addr?.minDepositText} U</span>
-              <button
-                className="btn sm"
-                onClick={() => {
-                  navigator.clipboard?.writeText(addr?.address || '');
-                  showToast('地址已复制');
-                }}
-              >
-                复制
-              </button>
+              <span className="row" style={{ gap: 6 }}>
+                <button
+                  className="btn sm"
+                  onClick={() => {
+                    haptic();
+                    navigator.clipboard?.writeText(addr?.address || '');
+                    showToast('地址已复制');
+                  }}
+                >
+                  复制
+                </button>
+                <button
+                  className="btn sm ghost"
+                  onClick={() => {
+                    haptic();
+                    const text = `我的 USDT 充值地址（TRON-TRC20）：${addr?.address || ''}`;
+                    window.open('https://t.me/share/url?url=' + encodeURIComponent(addr?.address || '') +
+                      '&text=' + encodeURIComponent(text), '_blank');
+                  }}
+                >
+                  分享
+                </button>
+              </span>
+            </div>
+            <div className="small muted" style={{ marginTop: 8 }}>
+              只支持 TRON-TRC20 的 USDT，其他链转账不可找回
             </div>
             {addr && !addr.ready && (
               <div className="small" style={{ color: '#f0b429', marginTop: 8 }}>
@@ -113,23 +149,83 @@ export function Wallet() {
       )}
 
       {tab === 'withdraw' && (
-        <div className="card">
-          <div className="card-title">提现工单</div>
-          {withdraws.length === 0 && <div className="empty">暂无</div>}
-          {withdraws.map(w => (
-            <div className="list-item" key={w.id}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="mono small">{fmt(w.amount)} USDT</div>
-                <div className="small muted ellipsis">{w.address}</div>
-                <div className="small muted">{w.status} · {(w.createdAt || '').slice(0, 16)}</div>
-              </div>
-              <div className="small muted">手续费 {fmt(w.fee)}</div>
+        <>
+          <div className="card">
+            <div className="card-title">提现 USDT</div>
+            <div className="row" style={{ marginBottom: 8 }}>
+              <span className="small muted">可提资产</span>
+              <span className="mono">{fmt(me?.balance || 0)} USDT</span>
             </div>
-          ))}
-          <div className="small muted" style={{ marginTop: 8 }}>
-            真实提现由公司区块链平台签名广播；未接入前只记账，状态停在 PENDING_REVIEW。
+            <div className="row" style={{ marginBottom: 10 }}>
+              <span className="small muted">可到账（扣 1 U 手续费）</span>
+              <span className="mono gold">
+                {fmt(Math.max(0, (me?.balance || 0) - 1_000_000))} USDT
+              </span>
+            </div>
+            <div className="field">
+              <label>TRON 收款地址</label>
+              <input value={wAddr} onChange={e => setWAddr(e.target.value)} placeholder="T 开头地址" />
+            </div>
+            <div className="field">
+              <label>提现金额（USDT，最小 10）</label>
+              <input value={wAmt} onChange={e => setWAmt(e.target.value)} inputMode="decimal" />
+            </div>
+            {me?.hasPayPwd && (
+              <div className="field">
+                <label>支付密码</label>
+                <input
+                  type="password"
+                  value={wPwd}
+                  onChange={e => setWPwd(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  placeholder="6 位数字"
+                />
+              </div>
+            )}
+            <button
+              className="btn primary block"
+              onClick={async () => {
+                haptic();
+                try {
+                  await api('/api/wallet/withdraw', {
+                    method: 'POST',
+                    body: { address: wAddr.trim(), amount: toMicro(wAmt), payPwd: wPwd }
+                  });
+                  showToast('提现申请已提交');
+                  await refreshMe();
+                  setWithdraws(await api<any[]>('/api/wallet/withdraw-orders'));
+                  setWAddr('');
+                  setWPwd('');
+                } catch (e: any) {
+                  showToast(e.message);
+                }
+              }}
+            >
+              提交提现
+            </button>
+            <div className="warn-bar">
+              ⚠️ 平台不会以任何理由索要密码或验证码；提现到账 1–10 分钟，请核对地址前 6 位与后 6 位。
+            </div>
           </div>
-        </div>
+
+          <div className="card">
+            <div className="card-title">提现工单</div>
+            {withdraws.length === 0 && <div className="empty">暂无</div>}
+            {withdraws.map(w => (
+              <div className="list-item" key={w.id}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="mono small">{fmt(w.amount)} USDT</div>
+                  <div className="small muted ellipsis">{w.address}</div>
+                  <div className="small muted">{w.status} · {(w.createdAt || '').slice(0, 16)}</div>
+                </div>
+                <div className="small muted">手续费 {fmt(w.fee)}</div>
+              </div>
+            ))}
+            <div className="small muted" style={{ marginTop: 8 }}>
+              真实提现由公司区块链平台签名广播；未接入前只记账，状态停在 PENDING_REVIEW。
+            </div>
+          </div>
+        </>
       )}
 
       {tab === 'redpacket' && (

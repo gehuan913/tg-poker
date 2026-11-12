@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "note": "用于第三方自测 verify.js；expected 由同一算法生成，仅作回归基线",
+  "cases": [
+    {
+      "name": "LONG-单人种子",
+      "input": {
+        "name": "LONG-单人种子",
+        "serverSeed": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "clientSeeds": "",
+        "nonce": "1",
+        "variant": "LONG",
+        "players": 6
+      },
+      "expected": {
+        "serverSeedHash": "331ab04caa328927f706627b812f4139f9ec42a6d61f17e468a70c41a48d8f67",
+        "deckSize": 52,
+        "deckFirst10": [
+          "8d",
+          "6c",
+          "4h",
+          "Ts",
+          "3d",
+          "3c",
+          "9c",
+          "5s",
+          "2h",
+          "Jh"
+        ],
+        "deckSha256": "0b87f07f8e0d78bd7559856d04197859417adf7f7141939ed4a113479b116f1d",
+        "holes": [
+          [
+            "8d",
+            "9c"
+          ],
+          [
+            "6c",
+            "5s"
+          ],
+          [
+            "4h",
+            "2h"
+          ],
+          [
+            "Ts",
+            "Jh"
+          ],
+          [
+            "3d",
+            "7c"
+          ],
+          [
+            "3c",
+            "Kc"
+          ]
+        ],
+        "board": [
+          "Jd",
+          "3s",
+          "Kd",
+          "7s",
+          "Qh"
+        ]
+      }
+    },
+    {
+      "name": "LONG-双人种子",
+      "input": {
+        "name": "LONG-双人种子",
+        "serverSeed": "aa11bb22cc33dd44ee55ff6600778899aabbccddeeff00112233445566778899",
+        "clientSeeds": "deadbeefcafebabe,saltsalt12345678",
+        "nonce": "12",
+        "variant": "LONG",
+        "players": 6
+      },
+      "expected": {
+        "serverSeedHash": "80824d566ec2e4be402fce054c4df1d2c759fc09d1d802a5da336e4a9ca63e76",
+        "deckSize": 52,
+        "deckFirst10": [
+          "7d",
+          "8s",
+          "9d",
+          "Qs",
+          "2d",
+          "3s",
+          "2c",
+          "Ac",
+          "8d",
+          "Kc"
+        ],
+        "deckSha256": "54b0ecb90964bbb1b75f4c37e2be7b2e3b11dd5cdbc0b4c9ff690ae16cca0b6e",
+        "holes": [
+          [
+            "7d",
+            "2c"
+          ],
+          [
+            "8s",
+            "Ac"
+          ],
+          [
+            "9d",
+            "8d"
+          ],
+          [
+            "Qs",
+            "Kc"
+          ],
+          [
+            "2d",
+            "2h"
+          ],
+          [
+            "3s",
+            "5h"
+          ]
+        ],
+        "board": [
+          "7h",
+          "9s",
+          "5c",
+          "Th",
+          "As"
+        ]
+      }
+    },
+    {
+      "name": "SHORT-短牌",
+      "input": {
+        "name": "SHORT-短牌",
+        "serverSeed": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "clientSeeds": "p1seed",
+        "nonce": "7",
+        "variant": "SHORT",
+        "players": 4
+      },
+      "expected": {
+        "serverSeedHash": "35ab52a17f6ba835f9243d9fd1549534ff663ce66f30660022f47c004be622bd",
+        "deckSize": 36,
+        "deckFirst10": [
+          "Qc",
+          "8d",
+          "9c",
+          "Js",
+          "Qh",
+          "Qd",
+          "8s",
+          "Th",
+          "Jd",
+          "As"
+        ],
+        "deckSha256": "ae1f3b0786b8f7bbf8d496772b081dbca6b6ce8ae822078428f54815a6d9b6cf",
+        "holes": [
+          [
+            "Qc",
+            "Qh"
+          ],
+          [
+            "8d",
+            "Qd"
+          ],
+          [
+            "9c",
+            "8s"
+          ],
+          [
+            "Js",
+            "Th"
+          ]
+        ],
+        "board": [
+          "Jd",
+          "As",
+          "6d",
+          "6c",
+          "Tc"
+        ]
+      }
+    }
+  ]
+}

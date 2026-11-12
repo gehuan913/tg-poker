@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   inviter_id  BIGINT                COMMENT '邀请人用户ID',
   vip_level   INT          DEFAULT 0 COMMENT 'VIP 等级',
   insurance_opt_in TINYINT DEFAULT 1 COMMENT '是否开启保险 1/0',
+  pay_pwd_hash     VARCHAR(128)         COMMENT '支付密码 PBKDF2 哈希，空=未设置',
   created_at  DATETIME(3)  DEFAULT CURRENT_TIMESTAMP(3) COMMENT '注册时间（UTC）',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户主表';

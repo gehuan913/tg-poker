@@ -42,6 +42,10 @@ public class AppUser {
     /** 是否开启保险：1=开，0=关。关闭后不报价、不能投保。 */
     private Integer insuranceOptIn;
 
+    /** 支付密码哈希（PBKDF2），空表示未设置。setter 不参与 JSON 输出。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String payPwdHash;
+
     /** 注册时间（UTC）。 */
     private LocalDateTime createdAt;
 }

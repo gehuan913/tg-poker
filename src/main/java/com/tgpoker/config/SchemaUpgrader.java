@@ -38,7 +38,10 @@ public class SchemaUpgrader implements ApplicationRunner {
     private static final List<ColumnPatch> PATCHES = List.of(
             new ColumnPatch("app_user", "insurance_opt_in",
                     "ALTER TABLE app_user ADD COLUMN insurance_opt_in TINYINT DEFAULT 1 "
-                            + "COMMENT '是否开启保险：1=开，0=关'")
+                            + "COMMENT '是否开启保险：1=开，0=关'"),
+            new ColumnPatch("app_user", "pay_pwd_hash",
+                    "ALTER TABLE app_user ADD COLUMN pay_pwd_hash VARCHAR(128) "
+                            + "COMMENT '支付密码 PBKDF2 哈希，空=未设置'")
     );
 
     @Override

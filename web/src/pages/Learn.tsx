@@ -1,16 +1,34 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.ts';
 import { Modal } from '../components/Modal.tsx';
-import { haptic } from '../tg.ts';
+import { useApp } from '../store.ts';
+import { haptic, openLink } from '../tg.ts';
 import type { LessonItem, QuizItem } from '../types.ts';
 
 type Tab = 'knowledge' | 'tool' | 'train' | 'mine';
 
 export function Learn() {
+  const { showToast } = useApp();
   const [tab, setTab] = useState<Tab>('knowledge');
   const [lessons, setLessons] = useState<LessonItem[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
   const [open, setOpen] = useState<LessonItem | null>(null);
+  const [cfg, setCfg] = useState<any>(null);
+  const [prefOpen, setPrefOpen] = useState(false);
+  const [prefs, setPrefs] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('prefs') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const on = (k: string, dft = true) => (prefs[k] === undefined ? dft : prefs[k]);
+  const savePref = (k: string, v: boolean) => {
+    const p = { ...prefs, [k]: v };
+    setPrefs(p);
+    localStorage.setItem('prefs', JSON.stringify(p));
+    haptic();
+  };
 
   // 工具
   const [hole, setHole] = useState('AsKd');
@@ -31,6 +49,7 @@ export function Learn() {
     api<LessonItem[]>('/api/teach/lessons').then(setLessons).catch(() => setLessons([]));
     api<any[]>('/api/teach/favorites').then(setFavorites).catch(() => setFavorites([]));
     api<QuizItem[]>('/api/teach/quiz?limit=5').then(setQuiz).catch(() => setQuiz([]));
+    api<any>('/api/app/config').then(setCfg).catch(() => setCfg(null));
   }, []);
 
   async function compute() {
@@ -175,18 +194,50 @@ export function Learn() {
       )}
 
       {tab === 'mine' && (
-        <div className="card">
-          <div className="card-title">我的收藏</div>
-          {favorites.length === 0 && <div className="empty">还没有收藏</div>}
-          {favorites.map((f: any) => (
-            <div className="list-item" key={f.id}>
-              <div style={{ flex: 1 }}>
-                <div>{f.title}</div>
-                <div className="small muted ellipsis">{f.summary}</div>
+        <>
+          <div className="card">
+            <div className="card-title">我的收藏</div>
+            {favorites.length === 0 && <div className="empty">还没有收藏</div>}
+            {favorites.map((f: any) => (
+              <div className="list-item" key={f.id}>
+                <div style={{ flex: 1 }}>
+                  <div>{f.title}</div>
+                  <div className="small muted ellipsis">{f.summary}</div>
+                </div>
               </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <div className="list-item"
+              onClick={() => {
+                haptic();
+                const link = cfg?.botUsername
+                  ? `https://t.me/${cfg.botUsername}?startapp=share`
+                  : 'https://t.me';
+                window.open('https://t.me/share/url?url=' + encodeURIComponent(link) +
+                  '&text=' + encodeURIComponent('一起来打德州，发牌可验证：' + link), '_blank');
+              }}
+            >
+              <div style={{ flex: 1 }}>分享给好友</div>
+              <div className="small muted">›</div>
             </div>
-          ))}
-        </div>
+            <div className="list-item"
+              onClick={() => {
+                haptic();
+                if (cfg?.groupUrl) openLink(cfg.groupUrl);
+                else showToast('官方群未配置');
+              }}
+            >
+              <div style={{ flex: 1 }}>官方群</div>
+              <div className="small muted">{cfg?.groupUrl ? '加入 ›' : '未配置 ›'}</div>
+            </div>
+            <div className="list-item" onClick={() => { haptic(); setPrefOpen(true); }}>
+              <div style={{ flex: 1 }}>设置</div>
+              <div className="small muted">音效 / 震动 ›</div>
+            </div>
+          </div>
+        </>
       )}
 
       {open && (
@@ -198,6 +249,24 @@ export function Learn() {
           <div className="small muted" style={{ marginTop: 10 }}>
             {open.mediaType === 'VIDEO' ? '视频地址：' + (open.mediaUrl || '待运营上传') : '图文内容'}
           </div>
+        </Modal>
+      )}
+
+      {prefOpen && (
+        <Modal title="教学设置" onClose={() => setPrefOpen(false)} okText="关闭" onOk={() => undefined}>
+          <div className="list-item">
+            <div style={{ flex: 1 }}>视频自动播放</div>
+            <button className={'btn sm' + (on('autoPlay') ? ' primary' : '')} onClick={() => savePref('autoPlay', !on('autoPlay'))}>
+              {on('autoPlay') ? '开' : '关'}
+            </button>
+          </div>
+          <div className="list-item">
+            <div style={{ flex: 1 }}>训练答对音效</div>
+            <button className={'btn sm' + (on('sound') ? ' primary' : '')} onClick={() => savePref('sound', !on('sound'))}>
+              {on('sound') ? '开' : '关'}
+            </button>
+          </div>
+          <div className="small muted" style={{ marginTop: 8 }}>设置保存在本机</div>
         </Modal>
       )}
     </>

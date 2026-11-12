@@ -13,6 +13,7 @@ export interface Me {
   inviteCode?: string;
   vipLevel?: number;
   insuranceOptIn?: boolean;
+  hasPayPwd?: boolean;
 }
 
 export interface SeatView {

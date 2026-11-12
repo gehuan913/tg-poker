@@ -483,3 +483,32 @@ select {
   color: #f0b429; font-size: 12px; text-align: center;
 }
 .action-bar.disabled { opacity: .45; pointer-events: none; }
+
+/* ---------------- 充值二维码 / 提现警示 ---------------- */
+.qr-img {
+  display: block; width: 180px; height: 180px; margin: 4px auto;
+  border-radius: 10px; background: #fff; padding: 6px;
+}
+.warn-bar {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(240, 180, 41, .1); border: 1px solid rgba(240, 180, 41, .32);
+  color: #f0b429; font-size: 12px; line-height: 1.6;
+}
+
+/* ---------------- 桌内水印 / 保险徽标 ---------------- */
+.felt { position: relative; }
+.felt::after {
+  content: var(--brand, '永旺德州');
+  position: absolute; right: 12px; bottom: 8px;
+  font-size: 11px; letter-spacing: 2px; color: rgba(255, 255, 255, .10);
+  pointer-events: none; user-select: none;
+}
+.ins-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 1px 5px; border-radius: 4px; font-size: 10px;
+  color: #f0b429; border: 1px solid rgba(240, 180, 41, .45);
+}
+
+.help-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.help-item:last-child { border-bottom: none; }
+.help-item b { display: block; margin-bottom: 4px; font-size: 13px; }

@@ -93,4 +93,40 @@ public class UserService {
         u.setInsuranceOptIn(on ? 1 : 0);
         userMapper.updateById(u);
     }
+
+    /** 是否已设置支付密码。 */
+    public boolean hasPayPassword(long userId) {
+        AppUser u = userMapper.selectById(userId);
+        return u != null && u.getPayPwdHash() != null && !u.getPayPwdHash().isBlank();
+    }
+
+    /**
+     * 设置 / 重置支付密码。
+     *
+     * <p>已是登录态，所以允许直接重置；生产要加强的话，重置前要求旧密码或 TG 二次确认。</p>
+     */
+    public void setPayPassword(long userId, String raw) {
+        if (!com.tgpoker.util.PasswordHasher.isValidFormat(raw)) {
+            throw new IllegalArgumentException("支付密码需为 6 位数字，且不能是连续或重复数字");
+        }
+        AppUser u = userMapper.selectById(userId);
+        if (u == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        u.setPayPwdHash(com.tgpoker.util.PasswordHasher.hash(raw));
+        userMapper.updateById(u);
+    }
+
+    /** 校验支付密码；未设置返回 true（不强制）。 */
+    public boolean checkPayPassword(long userId, String raw) {
+        AppUser u = userMapper.selectById(userId);
+        if (u == null) {
+            return false;
+        }
+        String stored = u.getPayPwdHash();
+        if (stored == null || stored.isBlank()) {
+            return true;
+        }
+        return com.tgpoker.util.PasswordHasher.verify(raw, stored);
+    }
 }

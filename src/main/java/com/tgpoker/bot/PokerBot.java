@@ -108,6 +108,14 @@ public class PokerBot implements LongPollingSingleThreadUpdateConsumer {
                             + "上桌从钱包扣买入，离桌自动退回。\n"
                             + "发牌可验证：开局公示 serverSeed 的 SHA256，玩家种子参与洗牌，结算后揭示 seed，可离线复算。\n"
                             + "输入 /fair 看验证方法，/invite 拿邀请码。");
+                } else if (text.startsWith("/start") && text.contains("help")) {
+                    // 「帮助」按钮走 ?start=help，落到这里
+                    sendText(chatId, "常见问题：\n"
+                            + "1) 上桌扣的是钱包余额，离桌自动退回；\n"
+                            + "2) 短牌 36 张，同花大于葫芦、三条大于顺子；\n"
+                            + "3) 保险只在转牌圈（河牌前）提供，需领先方主动投保；\n"
+                            + "4) 怀疑发牌？牌桌右上角复制存证号，用 /fair 的脚本离线复算。\n"
+                            + "更多问题请联系客服。");
                 } else if (text.startsWith("/invite")) {
                     long uid = from == null ? 0 : from.getId();
                     String code = inviteCode(uid);
@@ -175,9 +183,24 @@ public class PokerBot implements LongPollingSingleThreadUpdateConsumer {
             line.add(InlineKeyboardButton.builder()
                     .text("📢 官方频道").url(channelUrl).build());
         }
+        // 第 2 行：邀请好友 + 帮助（共 5 个入口，对应产品要求的 5 按钮）
+        List<InlineKeyboardButton> line2 = new ArrayList<>();
+        if (!botUsername.isEmpty()) {
+            line2.add(InlineKeyboardButton.builder()
+                    .text("🎁 邀请好友")
+                    .url("https://t.me/" + botUsername + "?startapp=ref_" + uid)
+                    .build());
+            line2.add(InlineKeyboardButton.builder()
+                    .text("🆘 帮助")
+                    .url("https://t.me/" + botUsername + "?start=help")
+                    .build());
+        }
         List<InlineKeyboardRow> rows = new ArrayList<>();
         if (!line.isEmpty()) {
             rows.add(new InlineKeyboardRow(line));
+        }
+        if (!line2.isEmpty()) {
+            rows.add(new InlineKeyboardRow(line2));
         }
         InlineKeyboardMarkup markup = rows.isEmpty() ? null : new InlineKeyboardMarkup(rows);
 

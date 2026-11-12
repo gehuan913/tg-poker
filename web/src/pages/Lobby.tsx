@@ -19,6 +19,7 @@ export function Lobby() {
   const [modal, setModal] = useState<'dep' | 'wd' | null>(null);
   const [amount, setAmount] = useState('10');
   const [address, setAddress] = useState('');
+  const [payPwd, setPayPwd] = useState('');
   const [addressInfo, setAddressInfo] = useState<any>(null);
   const [club, setClub] = useState<ClubItem | null>(null);
   const [clubs, setClubs] = useState<ClubItem[]>([]);
@@ -69,7 +70,10 @@ export function Lobby() {
     if (!address.trim()) { showToast('请填写 TRON 地址'); return false; }
     if (amt < 10_000_000) { showToast('最小提现 10 USDT'); return false; }
     try {
-      await api('/api/wallet/withdraw', { method: 'POST', body: { amount: amt, address: address.trim() } });
+      await api('/api/wallet/withdraw', {
+        method: 'POST',
+        body: { amount: amt, address: address.trim(), payPwd }
+      });
       showToast('提现申请已提交');
       await refreshMe();
       return true;
@@ -238,6 +242,19 @@ export function Lobby() {
             <label>提现金额（USDT，最小 10）</label>
             <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" />
           </div>
+          {me?.hasPayPwd && (
+            <div className="field">
+              <label>支付密码</label>
+              <input
+                type="password"
+                value={payPwd}
+                inputMode="numeric"
+                maxLength={6}
+                onChange={e => setPayPwd(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="6 位数字"
+              />
+            </div>
+          )}
           <div className="small muted">手续费 1 USDT，到账 1–10 分钟。当前未接链上签名，仅记账。</div>
         </Modal>
       )}
