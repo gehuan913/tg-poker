@@ -18,26 +18,57 @@ const TABS = [
   { key: 'me', icon: '👤', label: '我的' }
 ];
 
+const TABS_KEY = new Set(TABS.map(t => t.key).concat('wallet'));
+
+/**
+ * 从地址栏解析路由。
+ *
+ * <p><b>坑</b>：Telegram 打开 Mini App 时会在 URL 末尾追加
+ * {@code #tgWebAppData=query_id%3D...&tgWebAppVersion=8.0&tgWebAppPlatform=...}。
+ * 这段不是业务路由，若直接当作路由名，会匹配不到任何页面，
+ * 表现就是"只有底部导航、上面一片空白，点一下 tab 才出来"。
+ * 浏览器直接访问时没有这段，所以本地看不出问题。</p>
+ *
+ * <p>所以：空值、含 "=" 的、tgWebApp 开头的，一律回落到大厅。</p>
+ */
+function routeFromHash(): string {
+  const raw = location.hash.replace(/^#/, '');
+  if (!raw || raw.includes('=') || raw.startsWith('tgWebApp')) return 'lobby';
+  return raw;
+}
+
 export function App() {
   const { booted, bootError, boot, toast, leaveTable } = useApp();
-  const [hash, setHash] = useState(() => location.hash.replace(/^#/, '') || 'lobby');
+  const [hash, setHash] = useState(routeFromHash);
 
   useEffect(() => { boot(); }, []);
 
+  // 把 Telegram 塞进地址栏的参数清掉，避免刷新/重开时又被当成路由
   useEffect(() => {
-    const onChange = () => setHash(location.hash.replace(/^#/, '') || 'lobby');
+    if (location.hash.includes('=')) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => setHash(routeFromHash());
     window.addEventListener('hashchange', onChange);
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
 
+  // 未知路由兜底到大厅，保证任何情况下都有内容，而不是一片空白
+  const route = hash.startsWith('table/') || hash.startsWith('niuniu/') || TABS_KEY.has(hash)
+    ? hash
+    : 'lobby';
+
   useEffect(() => {
-    if (!hash.startsWith('table/')) leaveTable();
+    if (!route.startsWith('table/')) leaveTable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hash]);
+  }, [route]);
 
   // BackButton 单例：只在二级页显示，回大厅时隐藏
   useEffect(() => {
-    const isRoot = TABS.some(t => t.key === hash);
+    const isRoot = TABS.some(t => t.key === route);
     if (isRoot) {
       setBackHandler(null);
     } else {
@@ -45,7 +76,7 @@ export function App() {
     }
     return () => setBackHandler(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hash]);
+  }, [route]);
 
   if (!booted) {
     return (
@@ -61,21 +92,21 @@ export function App() {
     );
   }
 
-  const isTable = hash.startsWith('table/');
-  const isNiuniu = hash.startsWith('niuniu/');
+  const isTable = route.startsWith('table/');
+  const isNiuniu = route.startsWith('niuniu/');
   const fullscreen = isTable || isNiuniu;
 
   return (
     <div className="app">
       <div className={'page' + (fullscreen ? ' no-tab' : '')}>
-        {isTable && <TablePage tableId={hash.split('/')[1]} />}
-        {isNiuniu && <Niuniu tableId={hash.split('/')[1]} />}
-        {!fullscreen && hash === 'lobby' && <Lobby />}
-        {!fullscreen && hash === 'me' && <MePage />}
-        {!fullscreen && hash === 'wallet' && <Wallet />}
-        {!fullscreen && hash === 'learn' && <Learn />}
-        {!fullscreen && hash === 'club' && <Club />}
-        {!fullscreen && hash === 'activity' && <Activity />}
+        {isTable && <TablePage tableId={route.split('/')[1]} />}
+        {isNiuniu && <Niuniu tableId={route.split('/')[1]} />}
+        {!fullscreen && route === 'lobby' && <Lobby />}
+        {!fullscreen && route === 'me' && <MePage />}
+        {!fullscreen && route === 'wallet' && <Wallet />}
+        {!fullscreen && route === 'learn' && <Learn />}
+        {!fullscreen && route === 'club' && <Club />}
+        {!fullscreen && route === 'activity' && <Activity />}
       </div>
 
       {!fullscreen && (
@@ -83,7 +114,7 @@ export function App() {
           {TABS.map(t => (
             <div
               key={t.key}
-              className={'tab' + (hash === t.key ? ' active' : '')}
+              className={'tab' + (route === t.key ? ' active' : '')}
               onClick={() => { location.hash = '#' + t.key; }}
             >
               <i>{t.icon}</i><span>{t.label}</span>

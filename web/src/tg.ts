@@ -64,6 +64,7 @@ export function initTelegram(): TgInfo {
     applyTheme(t);
     bindViewportEvents(t);
     nudgeLayout(t);
+    watchFirstPaint(t);
   }
 
   const startParam: string = (inTelegram && (t?.initDataUnsafe?.start_param as string)) || '';
@@ -130,6 +131,35 @@ function nudgeLayout(t: TgWebApp) {
   };
   window.requestAnimationFrame(kick);
   [80, 200, 400, 800, 1500].forEach(ms => window.setTimeout(kick, ms));
+}
+
+/**
+ * 首屏渲染守护。
+ *
+ * <p>桌面版 Telegram 的 WebView 在 DOM 动态插入后有时漏掉重绘：进去一片黑，
+ * 点一下任意按钮内容才出现（登录完成、列表返回都属于动态插入，往往发生在
+ * {@link nudgeLayout} 那几次 kick 之后）。所以启动后一段时间内，只要 DOM
+ * 有变化就节流地强制一次重排。</p>
+ */
+export function watchFirstPaint(t: TgWebApp, ms = 8000) {
+  if (!t || typeof MutationObserver === 'undefined') return;
+  let timer: number | null = null;
+  const kick = () => {
+    applyViewport(t);
+    void document.body.offsetWidth;
+  };
+  const observer = new MutationObserver(() => {
+    if (timer !== null) return;
+    timer = window.setTimeout(() => {
+      timer = null;
+      kick();
+    }, 80);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.setTimeout(() => {
+    observer.disconnect();
+    kick();
+  }, ms);
 }
 
 function applyTheme(t: TgWebApp) {

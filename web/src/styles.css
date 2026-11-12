@@ -43,6 +43,9 @@ body { display: block; }
   flex-direction: column;
   background: var(--bg);
   overflow: hidden;
+  /* 强制独立合成层：桌面版 Telegram 的 WebView 在 DOM 动态插入后有时不重绘，
+     表现为进去一片黑、点一下才出现内容 */
+  transform: translateZ(0);
 }
 
 .boot {
@@ -66,9 +69,10 @@ body { display: block; }
   left: 0; right: 0; bottom: 0;
   height: 60px;
   display: flex;
-  background: rgba(19, 26, 36, .96);
+  /* 用不透明背景替代 backdrop-filter：blur 会让 Chromium 建 backdrop root，
+     桌面版 Telegram 里会导致同层内容不重绘（首屏黑屏、点一下才出来） */
+  background: #131a24;
   border-top: 1px solid var(--border);
-  backdrop-filter: blur(8px);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tab {
