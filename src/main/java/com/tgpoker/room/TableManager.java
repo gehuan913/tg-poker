@@ -38,6 +38,7 @@ public class TableManager implements TableEvents {
     private final HandService handService;
     private final ClubService clubService;
     private final com.tgpoker.service.UserService userService;
+    private final com.tgpoker.mapper.HandMapper handMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final Map<String, TableActor> tables = new LinkedHashMap<>();
@@ -83,7 +84,10 @@ public class TableManager implements TableEvents {
     }
 
     private void createTable(TableConfig cfg) {
-        tables.put(cfg.id, new TableActor(cfg, this, timer));
+        TableActor actor = new TableActor(cfg, this, timer);
+        // 手号接续：进程重启后 handNo 从 1 开始会与历史 hand_id 撞主键
+        actor.seedHandNo(handMapper.maxHandNo(cfg.id));
+        tables.put(cfg.id, actor);
     }
 
     public long defaultClubId() {

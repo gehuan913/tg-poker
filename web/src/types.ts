@@ -37,21 +37,33 @@ export interface SeatView {
   inHand?: boolean;
 }
 
-export interface InsuranceQuote {
-  available?: boolean;
-  buyerSeat?: number;
-  behindSeat?: number;
+export interface PotQuote {
+  potIndex: number;
+  potAmount: number;
+  players: number;
   outs: number;
+  tieOuts: number;
   odds: number;
-  oddsText: string;
+  tieOdds: number;
   maxCoverage: number;
-  coverage?: number;
   premium: number;
-  premiumText: string;
-  reason: string;
+  tiePremium: number;
+  mine: boolean;
+  available: boolean;
+  reason?: string;
+}
+
+export interface InsuranceQuote {
+  anyAvailable: boolean;
+  buyerSeat: number;
+  reason?: string;
+  pots: PotQuote[];
+  totalPremium?: number;
+  totalCoverage?: number;
 }
 
 export interface InsuranceOrderView {
+  potIndex?: number;
   handNo: number;
   nick: string;
   street: string;
@@ -273,9 +285,24 @@ export interface NiuniuView {
   seats: NiuniuSeat[];
   log: string[];
   canBet: boolean;
+  anteUnit?: number;
+  myBet?: number;
   wantBanker?: boolean;
   bankerMin?: number;
   queueCount?: number;
   lastNiuNiuSeat?: number;
   canApplyBanker?: boolean;
+  selecting?: boolean;
+  selectNick?: string;
+  selectDeadline?: number;
+  history?: { roundNo: number; bankerNick: string; entries: { nick: string; niuLabel: string; betText: string; result: number; resultText: string }[] }[];
+}
+
+export interface NotificationItem {
+  id: number;
+  kind: string;
+  title: string;
+  body?: string;
+  readFlag: number;
+  createdAt?: string;
 }

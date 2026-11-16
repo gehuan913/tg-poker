@@ -68,6 +68,9 @@ public class TableState {
     /** 本手赢家座位（可能多人平分）。保险结算要用：反超方是否真的赢了。 */
     public final List<Integer> winners = new ArrayList<>();
 
+    /** 每个底池的赢家座位，索引与 PotBuilder 的输出顺序一致（分池保险按池结算要用）。 */
+    public final List<List<Integer>> potWinners = new ArrayList<>();
+
     /** 给前端展示的牌桌日志（最近若干条）。 */
     public final List<String> log = new ArrayList<>();
 

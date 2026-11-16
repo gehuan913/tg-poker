@@ -96,21 +96,17 @@ public class TableSocketHandler extends TextWebSocketHandler {
                     actor.chat(userId, n.path("text").asText(""));
                     break;
                 case "insuranceQuote": {
-                    InsuranceOdds.Quote q = actor.quoteInsurance(userId);
+                    var q = actor.quoteInsurance(userId);
                     Map<String, Object> msg = new LinkedHashMap<>();
                     msg.put("t", "insuranceQuote");
-                    msg.put("available", q.available);
-                    msg.put("outs", q.outs);
-                    msg.put("odds", q.odds);
-                    msg.put("maxCoverage", q.maxCoverage);
-                    msg.put("premium", q.premium);
-                    msg.put("premiumText", Money.fmt(q.premium));
+                    msg.put("anyAvailable", q.anyAvailable);
+                    msg.put("pots", q.pots);
                     msg.put("reason", q.reason);
                     sendRaw(session, mapper.writeValueAsString(msg));
                     break;
                 }
                 case "insurance":
-                    actor.buyInsurance(userId, n.path("coverage").asLong(0));
+                    actor.buyInsurance(userId, n.path("potIndex").asInt(0), n.path("coverage").asLong(0));
                     break;
                 default:
                     log.debug("未知消息类型 {}", t);

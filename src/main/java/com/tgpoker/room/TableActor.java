@@ -4,6 +4,8 @@ import com.tgpoker.engine.ActionType;
 import com.tgpoker.engine.Card;
 import com.tgpoker.engine.Deck;
 import com.tgpoker.engine.GameException;
+import com.tgpoker.engine.Pot;
+import com.tgpoker.engine.PotBuilder;
 import com.tgpoker.engine.SeatState;
 import com.tgpoker.engine.Stage;
 import com.tgpoker.engine.TableState;
@@ -98,6 +100,19 @@ public class TableActor {
         });
     }
 
+    /**
+     * 服务重启后把手号接上，避免 handId 从 1 重来撞库里的旧主键。
+     *
+     * @param base 该桌已存在的最大手号
+     */
+    public void seedHandNo(long base) {
+        submit("seed", () -> {
+            if (base > state.handNo) {
+                state.handNo = base;
+            }
+        });
+    }
+
     /** 牌桌配置（只读）。 */
     public TableConfig getConfig() {
         return cfg;
@@ -148,6 +163,7 @@ public class TableActor {
      */
     public void sit(long userId, String nick, String avatar, long buyIn, int preferSeat) {
         submit("sit", () -> {
+            // 手牌进行中入座：下一手先补一个大盲，防止白嫖位置
             if (state.seatOf(userId) != null) {
                 events.onError(userId, "你已经在座上了");
                 return;
@@ -185,6 +201,8 @@ public class TableActor {
 
             target.seated = true;
             target.sittingOut = false;
+            // 手牌进行中入座：下一手先补一个大盲（dead blind），避免"插队白玩"
+            target.postBlindNextHand = state.stage != Stage.WAITING && state.stage != Stage.SETTLED;
             target.userId = userId;
             target.nick = nick;
             target.avatar = avatar == null ? "" : avatar;
@@ -211,6 +229,9 @@ public class TableActor {
     public void rebuy(long userId, long amount) {
         submit("rebuy", () -> {
             SeatState st = state.seatOf(userId);
+            if (st != null) {
+                st.timeoutCount = 0;
+            }
             if (st == null) {
                 events.onError(userId, "你不在座位上");
                 return;
@@ -575,7 +596,9 @@ public class TableActor {
             r.userId = st.userId;
             r.startStack = handStartStack.get(st.seat);
             r.endStack = st.stack;
-            r.net = st.stack - r.startStack;
+            // 保险赔付已经加到桌上筹码，但"牌局输赢"不含保险：单独记在 insuranceNet，
+            // 否则总输赢会重复计算（净额 + 保险净额两次）
+            r.net = st.stack - insurancePayoutOfSeat(st.seat) - r.startStack;
             Card[] hole = handStartHole.get(st.seat);
             r.holeCards = hole != null && hole[0] != null ? hole[0].code() + hole[1].code() : "";
             r.vpip = st.vpipThisHand ? 1 : 0;
@@ -593,14 +616,34 @@ public class TableActor {
             }
         }
 
+        // 余额不足自动站起（文档：结算后低于最低买入转旁观）
+        for (SeatState st : state.seats) {
+            if (st.seated && st.stack < Math.max(state.bigBlind, cfg.minBuyIn)) {
+                st.sittingOut = true;
+                state.logMsg(st.nick + " 筹码低于最低买入，自动站起");
+            }
+        }
+
         state.lastServerSeed = state.serverSeed;
         events.onHandSettled(this, o);
     }
 
+    /** 本手某座位的保险赔付（已进桌），用于把净额还原成"纯牌局输赢"。 */
+    private long insurancePayoutOfSeat(int seat) {
+        long sum = 0;
+        for (InsuranceOrder io : insuranceHistory) {
+            if (io.handId.equals(state.handId) && io.buyerSeat == seat) {
+                sum += io.payout;
+            }
+        }
+        return sum;
+    }
+
+    /** 本手某用户的保险净额 = 赔付 − 保费（主险 + 平局险）。 */
     private long insuranceNetOf(long userId) {
         long net = 0;
-        for (InsuranceOrder io : insuranceOrders) {
-            if (io.buyerUserId == userId) {
+        for (InsuranceOrder io : insuranceHistory) {
+            if (io.handId.equals(state.handId) && io.buyerUserId == userId) {
                 net += io.payout - io.premiumMain - io.premiumTie;
             }
         }
@@ -615,98 +658,185 @@ public class TableActor {
      * <p>触发条件（技术方案 §7.6）：转牌圈、双方单挑、有人 All-in 且已亮牌、
      * outs 在 1~14、金库保证金足够。任一不满足返回 {@code available=false} 并带原因。</p>
      */
-    public InsuranceOdds.Quote quoteInsurance(long userId) {
+    /** 保险报价：按底池分组，前端逐个池展示与购买。 */
+    public InsuranceQuoteView quoteInsurance(long userId) {
         synchronized (state) {
             return quoteInsuranceLocked(userId);
         }
     }
 
-    private InsuranceOdds.Quote quoteInsuranceLocked(long userId) {
-        InsuranceOdds.Quote q = new InsuranceOdds.Quote();
+    private InsuranceQuoteView quoteInsuranceLocked(long userId) {
+        InsuranceQuoteView v = new InsuranceQuoteView();
         if (!cfg.insuranceEnabled) {
-            q.reason = "本桌未开启保险";
-            return q;
+            v.reason = "本桌未开启保险";
+            return v;
         }
         if (state.stage != Stage.TURN) {
-            q.reason = "只在转牌圈（河牌前）提供保险";
-            return q;
-        }
-        List<SeatState> alive = new ArrayList<>();
-        for (SeatState st : state.seats) {
-            if (st.inHand && !st.folded) {
-                alive.add(st);
-            }
-        }
-        // 长牌最多 4 人、短牌单池最多 4 人（§7.6 条件⑧）
-        if (alive.size() < 2 || alive.size() > 4) {
-            q.reason = "只支持 2~4 人 All-in 投保";
-            return q;
-        }
-        boolean anyAllIn = false;
-        for (SeatState st : alive) {
-            if (st.allIn) {
-                anyAllIn = true;
-                break;
-            }
-        }
-        if (!anyAllIn) {
-            q.reason = "需要有人 All-in 并亮牌";
-            return q;
+            v.reason = "只在转牌圈（河牌前）提供保险，当前版本暂不支持翻牌圈转牌保险";
+            return v;
         }
         if (!events.insuranceOptIn(userId)) {
-            q.reason = "你已关闭保险，可在「我的」里重新开启";
-            return q;
+            v.reason = "你已关闭保险，可在「我的」里重新开启";
+            return v;
         }
 
-        List<Card[]> holes = new ArrayList<>();
-        List<Integer> seats = new ArrayList<>();
-        for (SeatState st : alive) {
-            holes.add(st.hole);
-            seats.add(st.seat);
+        int n = state.seats.size();
+        long[] contributed = new long[n];
+        boolean[] folded = new boolean[n];
+        List<SeatState> alive = new ArrayList<>();
+        boolean anyAllIn = false;
+        for (SeatState st : state.seats) {
+            contributed[st.seat] = st.contributed;
+            folded[st.seat] = st.folded || !st.inHand;
+            if (st.inHand && !st.folded) {
+                alive.add(st);
+                if (st.allIn) {
+                    anyAllIn = true;
+                }
+            }
         }
-        InsuranceOdds.Quote real = InsuranceOdds.quoteMulti(state.variant, holes, seats,
-                state.board, state.pot, alive.size());
-        if (!real.available) {
-            return real;
+        if (alive.size() < 2) {
+            v.reason = "至少两人才能投保";
+            return v;
         }
-        SeatState buyer = state.seats.get(real.buyerSeat);
-        if (buyer.userId != userId) {
-            real.available = false;
-            real.reason = "只有领先方可以投保";
-            return real;
+        if (!anyAllIn) {
+            v.reason = "需要有人 All-in 并亮牌";
+            return v;
         }
-        // 俱乐部金库必须能覆盖赔付（保证金 ≥ 1 个底池）
-        if (!events.onTreasuryReserve(cfg.clubId, real.maxCoverage)) {
-            real.available = false;
-            real.reason = "俱乐部金库保证金不足，暂不可投保";
-            return real;
+
+        List<Pot> pots = PotBuilder.build(contributed, folded);
+        if (pots.isEmpty()) {
+            v.reason = "暂无可投保的底池";
+            return v;
         }
-        return real;
+
+        SeatState me = state.seatOf(userId);
+        int mySeat = me == null ? -1 : me.seat;
+        long reserveTotal = 0;
+        int availableCount = 0;
+
+        for (int i = 0; i < pots.size(); i++) {
+            Pot p = pots.get(i);
+            PotQuote q = new PotQuote();
+            q.potIndex = i;
+            q.potAmount = p.amount;
+            q.players = p.eligible.size();
+            v.pots.add(q);
+
+            if (p.amount <= 0) {
+                q.reason = "底池为空";
+                continue;
+            }
+            if (state.variant == Variant.SHORT && q.players > 4) {
+                q.reason = "短牌该底池超过 4 人，不触发保险";
+                continue;
+            }
+
+            // 同牌限额：本池最高牌力并列 N 家时，每家最多只能保 Pot/N
+            long best = -1;
+            int ties = 0;
+            for (int seat : p.eligible) {
+                long sc = InsuranceOdds.score(state.variant, state.seats.get(seat).hole, state.board, null);
+                if (sc > best) {
+                    best = sc;
+                    ties = 1;
+                } else if (sc == best) {
+                    ties++;
+                }
+            }
+            long cap = ties > 1 ? p.amount / ties : p.amount;
+
+            List<Card[]> holes = new ArrayList<>();
+            List<Integer> seats = new ArrayList<>();
+            for (int seat : p.eligible) {
+                holes.add(state.seats.get(seat).hole);
+                seats.add(seat);
+            }
+
+            InsuranceOdds.Quote r = InsuranceOdds.quoteMulti(state.variant, holes, seats,
+                    state.board, p.amount, q.players);
+            q.outs = r.outs;
+            q.tieOuts = r.tieOuts;
+            q.odds = r.odds;
+            q.tieOdds = r.tieOdds;
+            q.maxCoverage = Math.min(cap, p.amount);
+
+            if (!r.available) {
+                q.reason = r.reason;
+                continue;
+            }
+            if (mySeat < 0 || r.buyerSeat != mySeat) {
+                q.reason = "只有本池领先方可以投保";
+                continue;
+            }
+            q.mine = true;
+            q.buyerSeat = mySeat;
+            q.coverage = q.maxCoverage;
+            q.premium = (long) Math.ceil(q.coverage / r.odds);
+            q.tiePremium = r.tieOuts > 0 && r.tieOdds > 0
+                    ? (long) Math.ceil(q.premium / r.tieOdds) : 0;
+            q.available = true;
+            q.reason = "ok";
+            availableCount++;
+            v.buyerSeat = mySeat;
+            v.totalCoverage += q.coverage;
+            v.totalPremium += q.premium + q.tiePremium;
+            reserveTotal += q.coverage;
+        }
+
+        v.anyAvailable = availableCount > 0;
+        if (v.anyAvailable && !events.onTreasuryReserve(cfg.clubId, reserveTotal)) {
+            for (PotQuote q : v.pots) {
+                if (q.available) {
+                    q.available = false;
+                    q.reason = "俱乐部金库保证金不足";
+                }
+            }
+            v.anyAvailable = false;
+            v.totalPremium = 0;
+            v.totalCoverage = 0;
+            v.reason = "俱乐部金库保证金不足，暂不可投保";
+        }
+        return v;
     }
 
     /**
-     * 买入保险。
+     * 购买某个底池的保险。
      *
-     * <p>保费从<b>场外钱包</b>扣，不扣桌上筹码：All-in 之后玩家桌上可能已经没钱，
-     * 但保险保的是"这手牌的结果"，钱必须能收得到。</p>
-     *
-     * @param coverage 保额；传 0 表示按上限（满池）投保
+     * @param potIndex 底池序号（必须来自当前报价）
+     * @param coverage 保额，0 表示按该池上限
      */
-    public void buyInsurance(long userId, long coverage) {
+    public void buyInsurance(long userId, int potIndex, long coverage) {
         submit("buyInsurance", () -> {
-            InsuranceOdds.Quote q = quoteInsuranceLocked(userId);
+            InsuranceQuoteView qv = quoteInsuranceLocked(userId);
+            PotQuote q = null;
+            for (PotQuote it : qv.pots) {
+                if (it.potIndex == potIndex) {
+                    q = it;
+                    break;
+                }
+            }
+            if (q == null) {
+                events.onError(userId, "底池不存在");
+                return;
+            }
             if (!q.available) {
                 events.onError(userId, q.reason == null ? "当前不能投保" : q.reason);
                 return;
             }
             long cov = coverage <= 0 ? q.maxCoverage : Math.min(coverage, q.maxCoverage);
             long premium = (long) Math.ceil(cov / q.odds);
+            long tiePremium = q.tieOdds > 0 ? (long) Math.ceil(premium / q.tieOdds) : 0;
             if (premium <= 0) {
                 events.onError(userId, "保额过小");
                 return;
             }
-            String bizId = "ins-" + state.handId + "-" + (++insuranceSeq);
-            if (!events.onInsurancePremium(userId, premium, bizId)) {
+            if (!events.onTreasuryReserve(cfg.clubId, cov)) {
+                events.onError(userId, "俱乐部金库保证金不足");
+                return;
+            }
+            String bizId = "ins-" + state.handId + "-" + potIndex + "-" + (++insuranceSeq);
+            if (!events.onInsurancePremium(userId, premium + tiePremium, bizId)) {
                 events.onError(userId, "钱包余额不足，无法支付保费");
                 return;
             }
@@ -714,22 +844,24 @@ public class TableActor {
             io.id = insuranceSeq;
             io.handId = state.handId;
             io.tableId = state.tableId;
-            io.potIndex = 0;
+            io.potIndex = potIndex;
             io.buyerUserId = userId;
             io.buyerSeat = q.buyerSeat;
-            io.behindSeat = q.behindSeat;
+            io.behindSeat = -1;
             io.outs = q.outs;
             io.odds = q.odds;
             io.tieOuts = q.tieOuts;
             io.tieOdds = q.tieOdds;
             io.premiumMain = premium;
+            io.premiumTie = tiePremium;
             io.coverage = cov;
             io.nick = state.seats.get(q.buyerSeat).nick;
             io.handNo = (int) state.handNo;
             io.street = "TURN";
             insuranceOrders.add(io);
-            state.logMsg(io.nick + " 买入保险 " + Money.fmt(cov) + "，保费 " + Money.fmt(premium)
-                    + "（" + q.outs + " outs，赔率 " + q.oddsText() + "）");
+            state.logMsg(io.nick + " 买入保险（Pot " + (potIndex + 1) + "）"
+                    + Money.fmt(cov) + "，保费 " + Money.fmt(premium + tiePremium)
+                    + "（" + q.outs + " outs，赔率 " + String.format("%.1f", q.odds) + "）");
             // 买完就继续发河牌，不让玩家干等
             if (state.insurancePending) {
                 TexasEngine.continueRunout(state);
@@ -738,7 +870,6 @@ public class TableActor {
         });
     }
 
-    /** 结算本手保险：反超方赢了就赔，没赢保费归金库。 */
     private void settleInsurance() {
         if (insuranceOrders.isEmpty()) {
             return;
@@ -747,20 +878,37 @@ public class TableActor {
             if (!"PENDING".equals(io.result)) {
                 continue;
             }
-            // 多人投保时 behindSeat 为 -1，用"领先方是否丢掉底池"判断是否触发赔付
-            boolean triggered = !state.winners.contains(io.buyerSeat);
-            if (triggered) {
-                io.result = "WON";
-                io.payout = io.coverage;
-                events.onInsurancePayout(io.buyerUserId, io.coverage, "inspay-" + io.handId + "-" + io.id);
-                events.onTreasurySettle(cfg.clubId, -io.coverage);
-                state.logMsg("保险赔付 " + io.nick + " " + Money.fmt(io.coverage));
+            List<Integer> winners = io.potIndex >= 0 && io.potIndex < state.potWinners.size()
+                    ? state.potWinners.get(io.potIndex)
+                    : state.winners;
+            boolean buyerWon = winners.contains(io.buyerSeat);
+            boolean tie = buyerWon && winners.size() > 1;
+            long premiumTotal = io.premiumMain + io.premiumTie;
+
+            long payout;
+            if (!buyerWon) {
+                // 被反超：赔保额
+                payout = io.coverage;
+            } else if (tie) {
+                // 平局：退还已交保费（主险 + 平局险），做到保本
+                payout = premiumTotal;
             } else {
-                io.result = "LOST";
-                io.payout = 0;
-                events.onTreasurySettle(cfg.clubId, io.premiumMain + io.premiumTie);
+                payout = 0;
+            }
+
+            io.payout = payout;
+            io.result = payout > 0 ? "WON" : "LOST";
+
+            if (payout > 0) {
+                // 产品文档：赔付金直接进桌，相当于保险公司作为玩家带入；不直接进钱包
+                state.seats.get(io.buyerSeat).stack += payout;
+                state.logMsg("保险赔付 " + io.nick + " " + Money.fmt(payout)
+                        + (tie ? "（平局，退还保费）" : ""));
+            } else {
                 state.logMsg("保险未触发，" + io.nick + " 保费归金库");
             }
+            // 金库净额 = 收到的保费 − 付出的赔付（之前漏了把保费记入金库）
+            events.onTreasurySettle(cfg.clubId, premiumTotal - payout);
             insuranceHistory.add(io);
         }
         insuranceOrders.clear();
@@ -852,7 +1000,16 @@ public class TableActor {
             if (state.handId == null || !state.handId.equals(expectedHand)) {
                 return;
             }
+            int timedOutSeat = state.actingSeat;
             TexasEngine.timeoutAct(state, now(), actionMs());
+            if (timedOutSeat >= 0 && timedOutSeat < state.seats.size()) {
+                SeatState ts = state.seats.get(timedOutSeat);
+                ts.timeoutCount++;
+                if (ts.timeoutCount >= 3) {
+                    ts.sittingOut = true;
+                    state.logMsg(ts.nick + " 连续超时 3 次，自动站起");
+                }
+            }
             afterChange();
         }), delay, TimeUnit.MILLISECONDS);
     }
@@ -1001,19 +1158,8 @@ public class TableActor {
 
         // 只有座位上的玩家才需要保险报价，且必须是当前手
         if (!spectator && viewerUserId != null && state.stage == Stage.TURN) {
-            InsuranceOdds.Quote q = quoteInsuranceLocked(viewerUserId);
-            if (q.available) {
-                InsuranceQuoteView iv = new InsuranceQuoteView();
-                iv.buyerSeat = q.buyerSeat;
-                iv.behindSeat = q.behindSeat;
-                iv.outs = q.outs;
-                iv.odds = q.odds;
-                iv.oddsText = q.oddsText();
-                iv.maxCoverage = q.maxCoverage;
-                iv.coverage = q.coverage;
-                iv.premium = q.premium;
-                iv.premiumText = Money.fmt(q.premium);
-                iv.reason = q.reason;
+            InsuranceQuoteView iv = quoteInsuranceLocked(viewerUserId);
+            if (iv.anyAvailable || iv.reason != null) {
                 v.insurance = iv;
             }
         }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    取某桌最大手号。
+    hand_id 形如 T61398-12，取最后一个 '-' 之后的部分转数字。
+    项目只用 MySQL 8.x，SUBSTRING_INDEX 可用。
+-->
+<mapper namespace="com.tgpoker.mapper.HandMapper">
+
+    <select id="maxHandNo" resultType="long">
+        SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(hand_id, '-', -1) AS UNSIGNED)), 0)
+          FROM hand
+         WHERE table_id = #{tableId}
+    </select>
+
+</mapper>

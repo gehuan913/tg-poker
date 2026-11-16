@@ -176,6 +176,20 @@ public class ClubService {
         return out;
     }
 
+    /** 是否是俱乐部管理员（OWNER / ADMIN），房主暂停牌桌要用。 */
+    public boolean isAdmin(long clubId, long userId) {
+        ClubMember m = memberMapper.find(clubId, userId);
+        if (m == null || !"ACTIVE".equals(m.getStatus())) {
+            return false;
+        }
+        if ("OWNER".equals(m.getRole()) || "ADMIN".equals(m.getRole())) {
+            return true;
+        }
+        // 系统默认俱乐部（owner_id=0）没有盟主，成员即管理员，否则没人能暂停
+        Club c = clubMapper.selectById(clubId);
+        return c != null && (c.getOwnerId() == null || c.getOwnerId() == 0);
+    }
+
     /** 俱乐部成员列表。 */
     public List<Map<String, Object>> members(long clubId) {
         return com.tgpoker.util.Maps.camelAll(memberMapper.members(clubId));

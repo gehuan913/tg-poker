@@ -516,3 +516,28 @@ select {
 .help-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .help-item:last-child { border-bottom: none; }
 .help-item b { display: block; margin-bottom: 4px; font-size: 13px; }
+
+/* 分池保险 */
+.pot-card {
+  margin-top: 8px; padding: 8px 10px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.pot-card.disabled { opacity: .6; }
+
+/* 消息中心 */
+.bell { position: relative; }
+.bell-dot {
+  position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px;
+  padding: 0 3px; border-radius: 8px; background: #e5484d; color: #fff;
+  font-size: 10px; line-height: 15px; text-align: center; font-style: normal;
+}
+.list-item.unread { background: rgba(240, 180, 41, .06); border-radius: 8px; }
+.dot-new { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-left: 6px; }
+
+/* 牛牛选庄 */
+.select-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; margin-bottom: 8px; border-radius: 9px;
+  background: rgba(240, 180, 41, .1); border: 1px solid rgba(240, 180, 41, .35);
+  font-size: 13px;
+}

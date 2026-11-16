@@ -25,6 +25,7 @@ export function TablePage({ tableId }: { tableId: string }) {
   const [seed, setSeed] = useState('');
   const [rpTo, setRpTo] = useState(0);
   const [rpAmt, setRpAmt] = useState('1');
+  const [rpPwd, setRpPwd] = useState('');
   const [, forceTick] = useState(0);
 
   useEffect(() => { enterTable(tableId); }, [tableId]);
@@ -249,53 +250,75 @@ export function TablePage({ tableId }: { tableId: string }) {
         {tab === 'insurance' && (
           <div>
             {!v.insuranceEnabled && <div className="empty">本桌未开启保险</div>}
-            {v.insuranceEnabled && (
-              <>
-                <div className="ins-head">
-                  <div>
-                    <div className="small muted">当前报价</div>
-                    <div className="mono">
-                      {quote?.available ?? v.insurance?.available
-                        ? `${quote?.outs ?? v.insurance?.outs} outs · 赔率 ${quote?.odds ?? v.insurance?.oddsText}`
-                        : (quote?.reason || v.insurance?.reason || '仅在转牌圈 All-in 亮牌后可投保')}
-                    </div>
-                  </div>
-                  <button className="btn sm" onClick={() => doQuote()}>刷新报价</button>
-                </div>
-                {(quote?.available || v.insurance?.available) && (
-                  <>
-                    <div className="small muted">
-                      保额上限 {fmt(quote?.maxCoverage ?? v.insurance?.maxCoverage ?? 0)}，应付保费{' '}
-                      {fmt(quote?.premium ?? v.insurance?.premium ?? 0)}
-                    </div>
-                    <button
-                      className="btn primary block"
-                      style={{ marginTop: 8 }}
-                      onClick={() => doInsurance(quote?.maxCoverage ?? v.insurance?.maxCoverage ?? 0)}
-                    >
-                      买入保险（满池）
-                    </button>
-                  </>
-                )}
-                <div className="divider" />
-                <div className="small muted">本桌保险流水</div>
-                {(v.insurances || []).length === 0 && <div className="empty">暂无</div>}
-                {(v.insurances || []).map((io, i) => (
-                  <div className="list-item" key={i}>
-                    <div style={{ flex: 1 }}>
-                      <div className="small">{io.nick} · {io.handNo}手-{io.street}</div>
-                      <div className="small muted">{io.outs} outs · 赔率 {io.odds}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="mono small">保费 {io.premiumText}</div>
-                      <div className={'mono small ' + (io.result === 'WON' ? 'green' : 'muted')}>
-                        赔付 {io.payoutText} · {io.result === 'WON' ? '已触发' : '未触发'}
+            {v.insuranceEnabled && (() => {
+              const q = quote || v.insurance;
+              return (
+                <>
+                  <div className="ins-head">
+                    <div>
+                      <div className="small muted">当前报价</div>
+                      <div className="mono">
+                        {q?.anyAvailable
+                          ? `可投保 ${q.pots.filter(p => p.available).length} 个底池`
+                          : (q?.reason || '仅在转牌圈 All-in 亮牌后可投保')}
                       </div>
                     </div>
+                    <button className="btn sm" onClick={() => doQuote()}>刷新报价</button>
                   </div>
-                ))}
-              </>
-            )}
+
+                  {(q?.pots || []).map(p => (
+                    <div className={'pot-card' + (p.available ? '' : ' disabled')} key={p.potIndex}>
+                      <div className="row">
+                        <span><b>底池 {p.potIndex + 1}</b>{p.mine ? ' · 我领先' : ''}</span>
+                        <span className="mono">{fmt(p.potAmount)}</span>
+                      </div>
+                      {p.available ? (
+                        <>
+                          <div className="small muted">
+                            {p.players} 人 · {p.outs} outs · 赔率 {p.odds}
+                            {p.tieOuts > 0 ? ` · 平局险 ${p.tieOuts} outs @ ${p.tieOdds}` : ''}
+                          </div>
+                          <div className="small muted">
+                            上限 {fmt(p.maxCoverage)} · 满池保费 {fmt(p.premium + p.tiePremium)}
+                          </div>
+                          <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                            {[1, 0.5, 1 / 3].map(rate => (
+                              <button
+                                className="btn sm"
+                                key={rate}
+                                onClick={() => doInsurance(p.potIndex, Math.floor(p.maxCoverage * rate))}
+                              >
+                                {rate === 1 ? '满池' : rate === 0.5 ? '1/2 池' : '1/3 池'}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="small muted">{p.reason || '当前不可投保'}</div>
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="divider" />
+                  <div className="small muted">本桌保险流水</div>
+                  {(v.insurances || []).length === 0 && <div className="empty">暂无</div>}
+                  {(v.insurances || []).map((io, i) => (
+                    <div className="list-item" key={i}>
+                      <div style={{ flex: 1 }}>
+                        <div className="small">{io.nick} · {io.handNo}手-{io.street}</div>
+                        <div className="small muted">Pot {(io.potIndex ?? 0) + 1} · {io.outs} outs · 赔率 {io.odds}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="mono small">保费 {io.premiumText}</div>
+                        <div className={'mono small ' + (io.result === 'WON' ? 'green' : 'muted')}>
+                          赔付 {io.payoutText} · {io.result === 'WON' ? '已触发' : '未触发'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -317,6 +340,17 @@ export function TablePage({ tableId }: { tableId: string }) {
                   <label>金额（USDT，0.1 ~ 100）</label>
                   <input value={rpAmt} onChange={e => setRpAmt(e.target.value)} inputMode="decimal" />
                 </div>
+                <div className="field">
+                  <label>支付密码</label>
+                  <input
+                    type="password"
+                    value={rpPwd}
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={e => setRpPwd(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6 位数字"
+                  />
+                </div>
                 <button
                   className="btn primary block"
                   onClick={async () => {
@@ -324,7 +358,7 @@ export function TablePage({ tableId }: { tableId: string }) {
                     try {
                       await api(`/api/table/${tableId}/redpacket`, {
                         method: 'POST',
-                        body: { receiverId: rpTo, amount: toMicro(rpAmt), memo: '桌内红包' }
+                        body: { receiverId: rpTo, amount: toMicro(rpAmt), memo: '桌内红包', payPwd: rpPwd }
                       });
                       showToast('红包已发送');
                     } catch (e: any) {

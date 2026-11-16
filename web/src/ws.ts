@@ -140,8 +140,8 @@ export class TableSocket {
     return this.send({ t: 'insuranceQuote' });
   }
 
-  buyInsurance(coverage: number) {
-    return this.send({ t: 'insurance', coverage });
+  buyInsurance(potIndex: number, coverage: number) {
+    return this.send({ t: 'insurance', potIndex, coverage });
   }
 
   close() {

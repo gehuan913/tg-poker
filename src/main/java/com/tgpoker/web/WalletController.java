@@ -127,7 +127,8 @@ public class WalletController {
         String memo = body.get("memo") == null ? "" : String.valueOf(body.get("memo"));
         String scene = body.get("scene") == null ? "CHAT" : String.valueOf(body.get("scene"));
         String tableId = body.get("tableId") == null ? null : String.valueOf(body.get("tableId"));
-        return ApiResponse.ok(redPacketService.send(userId, receiverId, amount, memo, scene, tableId));
+        String payPwd = body.get("payPwd") == null ? "" : String.valueOf(body.get("payPwd"));
+        return ApiResponse.ok(redPacketService.send(userId, receiverId, amount, memo, scene, tableId, payPwd));
     }
 
     @GetMapping("/redpackets")

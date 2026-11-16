@@ -30,6 +30,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class RedPacketService {
 
+    private final NotificationService notificationService;
+
     private static final long MIN_AMOUNT = 100_000L;      // 0.1 USDT
     private static final long MAX_AMOUNT = 100_000_000L;  // 100 USDT
     /** 单日单人收红包上限，防拆单洗钱。 */
@@ -50,9 +52,17 @@ public class RedPacketService {
      */
     @Transactional
     public Map<String, Object> send(long senderId, long receiverId, long amount,
-                                    String memo, String scene, String tableId) {
+                                    String memo, String scene, String tableId, String payPwd) {
         if (receiverId <= 0) {
             throw new IllegalArgumentException("请选择收款人");
+        }
+        // 产品文档：转账/红包发送前必须绑定并校验支付密码
+        AppUser sender = userMapper.selectById(senderId);
+        if (sender == null || sender.getPayPwdHash() == null || sender.getPayPwdHash().isBlank()) {
+            throw new IllegalArgumentException("请先在「我的 → 支付密码」设置支付密码");
+        }
+        if (!com.tgpoker.util.PasswordHasher.verify(payPwd, sender.getPayPwdHash())) {
+            throw new IllegalArgumentException("支付密码错误");
         }
         if (receiverId == senderId) {
             throw new IllegalArgumentException("不能给自己发红包");
@@ -91,6 +101,8 @@ public class RedPacketService {
         rp.setClaimedAt(LocalDateTime.now());
         redPacketMapper.insert(rp);
 
+        notificationService.push(receiverId, "REDPACKET", "收到红包",
+                "收到 " + sender.getNick() + " 的红包 " + Money.fmt(amount) + " USDT", String.valueOf(rp.getId()));
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", rp.getId());
         m.put("amount", amount);

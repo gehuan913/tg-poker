@@ -318,3 +318,16 @@ CREATE TABLE IF NOT EXISTS niuniu_result (
   PRIMARY KEY (id),
   KEY idx_nnr_user (user_id, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='牛牛单局单人战绩';
+
+CREATE TABLE IF NOT EXISTS notification (
+  id         BIGINT      NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+  user_id    BIGINT      NOT NULL COMMENT '接收人',
+  kind       VARCHAR(24) NOT NULL COMMENT 'DEPOSIT/WITHDRAW/REDPACKET/ACTIVITY/SYSTEM',
+  title      VARCHAR(64) NOT NULL COMMENT '标题',
+  body       VARCHAR(255)         COMMENT '正文',
+  ref_id     VARCHAR(64)          COMMENT '关联业务ID',
+  read_flag  TINYINT     DEFAULT 0 COMMENT '是否已读 1/0',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ntf_user (user_id, id DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息中心';

@@ -6,10 +6,13 @@ import com.tgpoker.util.Money;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -37,6 +40,8 @@ public class NiuniuRoom {
         public String nick = "";
         public String avatar = "";
         public boolean seated;
+        /** 暂离/自动站起：不参与下一局，但仍占座等玩家自己离桌。 */
+        public boolean sittingOut;
         public long stack;
         public long bet;
         public boolean betPlaced;
@@ -64,6 +69,10 @@ public class NiuniuRoom {
         public List<Map<String, Object>> seats = new ArrayList<>();
         public List<String> log = new ArrayList<>();
         public boolean canBet;
+        /** 房间底注（micro-USDT）。 */
+        public long anteUnit;
+        /** 本局我已下注总额。 */
+        public long myBet;
         /** 我是否已申请上庄。 */
         public boolean wantBanker;
         /** 上庄最低桌内资金（micro-USDT）。 */
@@ -74,6 +83,14 @@ public class NiuniuRoom {
         public int lastNiuNiuSeat = -1;
         /** 是否允许申请上庄（在座且不是庄家）。 */
         public boolean canApplyBanker;
+        /** 是否处于"牛牛选庄"阶段。 */
+        public boolean selecting;
+        /** 当前等待答复的玩家昵称。 */
+        public String selectNick;
+        /** 选庄截止时间（毫秒）。 */
+        public long selectDeadline;
+        /** 最近牌局回顾。 */
+        public List<Map<String, Object>> history = new ArrayList<>();
     }
 
     private final String tableId;
@@ -97,19 +114,31 @@ public class NiuniuRoom {
 
     /** 上庄最低桌内资金：要能覆盖"最大 5 倍"的赔付。 */
     private final long bankerMinStack;
+
+    /** 房间底注：入座闲家自动下注 1 倍，追加必须是它的整数倍。 */
+    private final long anteUnit;
     /** 上局开出牛牛的座位，下局"选庄"时优先。 */
     private volatile int lastNiuNiuSeat = -1;
     /** 上庄申请序号，FIFO 排队用。 */
     private long applyCounter = 0;
 
+    /** 最近牌局回顾（最多 20 局）。 */
+    private final List<Map<String, Object>> history = new ArrayList<>();
+    /** 选庄候选队列与倒计时。 */
+    private final List<Seat> selectQueue = new ArrayList<>();
+    private volatile int selectIdx = 0;
+    private volatile long selectDeadline = 0;
+    private ScheduledFuture<?> selectTimer;
+
     public NiuniuRoom(String tableId, String name, long minBuyIn, long maxBuyIn, long bankerMinStack,
-                      WalletService walletService, ScheduledExecutorService timer,
+                      long anteUnit, WalletService walletService, ScheduledExecutorService timer,
                       java.util.function.Consumer<java.util.List<com.tgpoker.model.NiuniuResult>> recorder) {
         this.tableId = tableId;
         this.name = name;
         this.minBuyIn = minBuyIn;
         this.maxBuyIn = maxBuyIn;
         this.bankerMinStack = bankerMinStack;
+        this.anteUnit = Math.max(1, anteUnit);
         this.walletService = walletService;
         this.timer = timer;
         this.recorder = recorder;
@@ -123,6 +152,33 @@ public class NiuniuRoom {
             t.setDaemon(true);
             return t;
         });
+    }
+
+    /**
+     * 同步执行：HTTP 接口用，异常直接抛回调用方，前端才能看到"余额不足/非整数倍"。
+     * 定时器路径仍用异步 submit，避免在 actor 线程里互相等待。
+     */
+    private void submitSync(String name, Runnable task) {
+        if (closed) {
+            throw new IllegalStateException("牌桌已关闭");
+        }
+        Future<?> f = exec.submit(() -> {
+            synchronized (this) {
+                task.run();
+            }
+        });
+        try {
+            f.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("操作被中断");
+        } catch (ExecutionException e) {
+            Throwable c = e.getCause();
+            if (c instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new IllegalStateException(c == null ? "操作失败" : c.getMessage());
+        }
     }
 
     private void submit(String name, Runnable task) {
@@ -145,7 +201,7 @@ public class NiuniuRoom {
      * 入座并买入；第一个入座的人自动成为庄家。
      */
     public void sit(long userId, String nick, String avatar, long buyIn, int preferSeat) {
-        submit("sit", () -> {
+        submitSync("sit", () -> {
             for (Seat s : seats) {
                 if (s.seated && s.userId == userId) {
                     throw new IllegalStateException("你已经在座上了");
@@ -193,7 +249,7 @@ public class NiuniuRoom {
      * 离桌退筹码；本局已下注时不允许离桌（等开牌结算完再走）。
      */
     public void leave(long userId) {
-        submit("leave", () -> {
+        submitSync("leave", () -> {
             Seat s = seatOf(userId);
             if (s == null) {
                 return;
@@ -226,7 +282,7 @@ public class NiuniuRoom {
      * 所有闲家都下注后立即开牌，不等满 8 秒。</p>
      */
     public void bet(long userId, long amount) {
-        submit("bet", () -> {
+        submitSync("bet", () -> {
             if (!"BETTING".equals(stage)) {
                 throw new IllegalStateException("当前不是下注时间");
             }
@@ -237,26 +293,39 @@ public class NiuniuRoom {
             if (s.seat == bankerSeat) {
                 throw new IllegalStateException("庄家不能下注");
             }
-            if (s.betPlaced) {
-                throw new IllegalStateException("本局已下注");
+            if (amount <= 0 || amount % anteUnit != 0) {
+                throw new IllegalStateException("追加金额必须是底注 " + Money.fmt(anteUnit) + " 的整数倍");
             }
             long max = maxBetFor(s);
-            if (amount <= 0 || amount > max) {
-                throw new IllegalStateException("下注需在 0.1 ~ " + Money.fmt(max) + " 之间");
+            if (s.bet + amount > max) {
+                throw new IllegalStateException("本局最多还能追加 " + Money.fmt(Math.max(0, max - s.bet)));
             }
-            s.bet = amount;
+            s.bet += amount;
             s.betPlaced = true;
-            logMsg(s.nick + " 下注 " + Money.fmt(amount));
-            if (allBetsPlaced()) {
-                settle();
-            }
+            logMsg(s.nick + " 追加下注 " + Money.fmt(amount) + "，本局共 " + Money.fmt(s.bet));
         });
     }
 
+    /**
+     * 本局该座位还能下到多少（总额，不是追加额）。
+     *
+     * <p>三重限制取最小：个人筹码、庄家 5 倍预留（庄家池 /5 − 本局其他人已下注）、
+     * 且必须向下取整到底注的整数倍。</p>
+     */
     private long maxBetFor(Seat s) {
         Seat banker = bankerSeat >= 0 ? seats[bankerSeat] : null;
-        long bankerCap = banker == null ? 0 : banker.stack / 5;
-        return Math.max(0, Math.min(s.stack, bankerCap));
+        if (banker == null) {
+            return 0;
+        }
+        long committedOthers = 0;
+        for (Seat o : seats) {
+            if (o.seat != s.seat && o.seat != bankerSeat && o.bet > 0) {
+                committedOthers += o.bet;
+            }
+        }
+        long bankerCap = banker.stack / 5 - committedOthers;
+        long cap = Math.min(s.stack, Math.max(0, bankerCap));
+        return cap - (cap % anteUnit);
     }
 
     private boolean allBetsPlaced() {
@@ -298,6 +367,14 @@ public class NiuniuRoom {
             s.betPlaced = false;
             s.hand = null;
             s.result = 0;
+        }
+        // 产品规则：入座闲家自动下注 1 倍底注，下注阶段可再追加
+        for (Seat s : seats) {
+            if (s.seated && !s.sittingOut && s.seat != bankerSeat && s.stack >= anteUnit) {
+                s.bet = anteUnit;
+                s.betPlaced = true;
+                logMsg(s.nick + " 自动下注 " + Money.fmt(anteUnit));
+            }
         }
         stage = "BETTING";
         deadline = System.currentTimeMillis() + BET_SECONDS * 1000L;
@@ -401,7 +478,7 @@ public class NiuniuRoom {
      * <p>下庄时若当前不在牌局中（WAITING/SETTLED），立即生效；否则本局打完再生效。</p>
      */
     public void applyBanker(long userId, boolean on) {
-        submit("applyBanker", () -> {
+        submitSync("applyBanker", () -> {
             Seat s = seatOf(userId);
             if (s == null) {
                 throw new IllegalStateException("你不在座位上");
@@ -501,6 +578,29 @@ public class NiuniuRoom {
 
         stage = "SETTLED";
         logMsg("开牌：庄家 " + banker.hand.niuLabel());
+
+        Map<String, Object> rec = new LinkedHashMap<>();
+        rec.put("roundNo", roundNo);
+        rec.put("bankerNick", banker.nick);
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (Seat s : seats) {
+            if (s.hand == null) {
+                continue;
+            }
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("nick", s.nick);
+            e.put("niuLabel", s.hand.niuLabel());
+            e.put("betText", Money.fmt(s.bet));
+            e.put("result", s.result);
+            e.put("resultText", Money.fmtSigned(s.result));
+            entries.add(e);
+        }
+        rec.put("entries", entries);
+        history.add(rec);
+        while (history.size() > 20) {
+            history.remove(0);
+        }
+
         if (recorder != null) {
             try {
                 recorder.accept(rows);
@@ -508,7 +608,111 @@ public class NiuniuRoom {
                 LOG.warn("牛牛战绩落库失败 table={} round={}", tableId, roundNo, e);
             }
         }
+        // 结算后低于最低买入自动站起转旁观（文档：闲家与庄家都适用）
+        for (Seat s : seats) {
+            if (s.seated && s.stack < minBuyIn) {
+                s.sittingOut = true;
+                logMsg(s.nick + " 筹码低于最低买入，自动站起");
+                if (s.seat == bankerSeat) {
+                    bankerSeat = -1;
+                }
+            }
+        }
+
+        maybeSelectBanker();
+    }
+
+    /**
+     * 牛牛触发选庄：A/B/C 任一位置开出牛牛时，按牌型/单牌/花色排序，
+     * 依次询问是否上庄，8 秒不答复视为放弃。
+     */
+    private void maybeSelectBanker() {
+        if (lastNiuNiuSeat < 0 || countActive() < 2) {
+            scheduleNextRound(NEXT_ROUND_MS);
+            return;
+        }
+        List<Seat> cands = new ArrayList<>();
+        for (Seat s : seats) {
+            if (s.seated && s.seat != bankerSeat && s.hand != null && s.hand.niu == 10) {
+                cands.add(s);
+            }
+        }
+        if (cands.isEmpty()) {
+            scheduleNextRound(NEXT_ROUND_MS);
+            return;
+        }
+        cands.sort((a, b) -> NiuniuEngine.compare(b.hand, a.hand));
+        selectQueue.clear();
+        selectQueue.addAll(cands);
+        selectIdx = 0;
+        selectDeadline = System.currentTimeMillis() + 8000;
+        stage = "SELECT_BANKER";
+        logMsg(cands.get(0).nick + " 开出牛牛，是否上庄？（8 秒）");
+        scheduleSelectTimeout();
+    }
+
+    private void scheduleSelectTimeout() {
+        if (selectTimer != null) {
+            selectTimer.cancel(false);
+        }
+        selectTimer = timer.schedule(
+                () -> submit("selectTimeout", () -> advanceSelect(false)),
+                8000, TimeUnit.MILLISECONDS);
+    }
+
+    /** 选庄推进：接受 / 放弃 / 超时。 */
+    private void advanceSelect(boolean accept) {
+        if (!"SELECT_BANKER".equals(stage) || selectIdx >= selectQueue.size()) {
+            return;
+        }
+        Seat cand = selectQueue.get(selectIdx);
+        if (accept && cand.seated) {
+            if (cand.stack >= bankerMinStack || tryTopUp(cand)) {
+                bankerSeat = cand.seat;
+                cand.wantBanker = true;
+                finishSelect(cand.nick + " 接受选庄，成为庄家");
+                return;
+            }
+            logMsg(cand.nick + " 资金不足，无法上庄");
+        }
+        selectIdx++;
+        if (selectIdx < selectQueue.size()) {
+            selectDeadline = System.currentTimeMillis() + 8000;
+            logMsg(selectQueue.get(selectIdx).nick + " 是否上庄？（8 秒）");
+            scheduleSelectTimeout();
+            return;
+        }
+        finishSelect("全部放弃选庄");
+    }
+
+    private void finishSelect(String reason) {
+        stage = "SETTLED";
+        selectQueue.clear();
+        selectDeadline = 0;
+        if (selectTimer != null) {
+            selectTimer.cancel(false);
+            selectTimer = null;
+        }
+        logMsg(reason);
+        if (bankerSeat < 0 || !seats[bankerSeat].seated
+                || seats[bankerSeat].stack < bankerMinStack) {
+            resolveBanker();
+        }
         scheduleNextRound(NEXT_ROUND_MS);
+    }
+
+    /** 玩家答复选庄。 */
+    public void chooseBanker(long userId, boolean accept) {
+        submitSync("chooseBanker", () -> {
+            if (!"SELECT_BANKER".equals(stage) || selectIdx >= selectQueue.size()) {
+                throw new IllegalStateException("当前不在选庄阶段");
+            }
+            Seat cand = selectQueue.get(selectIdx);
+            if (cand.userId != userId) {
+                throw new IllegalStateException("还没轮到你");
+            }
+            advanceSelect(accept);
+        });
     }
 
     /** 组装一条战绩行，供上层落库。 */
@@ -585,11 +789,13 @@ public class NiuniuRoom {
         if (me != null) {
             v.mySeat = me.seat;
             v.maxBet = maxBetFor(me);
-            v.canBet = "BETTING".equals(stage) && me.seat != bankerSeat && !me.betPlaced;
+            v.canBet = "BETTING".equals(stage) && me.seat != bankerSeat && me.stack > 0;
+            v.myBet = me.bet;
             v.wantBanker = me.wantBanker;
             v.canApplyBanker = me.seat != bankerSeat;
         }
         v.bankerMin = bankerMinStack;
+        v.anteUnit = anteUnit;
         v.lastNiuNiuSeat = lastNiuNiuSeat;
         int queue = 0;
         for (Seat s : seats) {
@@ -598,6 +804,13 @@ public class NiuniuRoom {
             }
         }
         v.queueCount = queue;
+        v.selecting = "SELECT_BANKER".equals(stage);
+        if (v.selecting && selectIdx < selectQueue.size()) {
+            v.selectNick = selectQueue.get(selectIdx).nick;
+            v.selectDeadline = selectDeadline;
+        }
+        int hFrom = Math.max(0, history.size() - 10);
+        v.history = new ArrayList<>(history.subList(hFrom, history.size()));
 
         for (Seat s : seats) {
             Map<String, Object> m = new HashMap<>();

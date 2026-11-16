@@ -21,6 +21,7 @@ export function Wallet() {
   const [toUser, setToUser] = useState<any>(null);
   const [rpAmt, setRpAmt] = useState('1');
   const [rpMemo, setRpMemo] = useState('');
+  const [rpPwd, setRpPwd] = useState('');
   const [qr, setQr] = useState('');
   const [wAddr, setWAddr] = useState('');
   const [wAmt, setWAmt] = useState('10');
@@ -290,13 +291,24 @@ export function Wallet() {
                   <label>备注（可选）</label>
                   <input value={rpMemo} onChange={e => setRpMemo(e.target.value)} maxLength={30} />
                 </div>
+                <div className="field">
+                  <label>支付密码</label>
+                  <input
+                    type="password"
+                    value={rpPwd}
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={e => setRpPwd(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6 位数字"
+                  />
+                </div>
                 <button
                   className="btn primary block"
                   onClick={async () => {
                     try {
                       await api('/api/wallet/redpacket', {
                         method: 'POST',
-                        body: { receiverId: toUser.userId, amount: toMicro(rpAmt), memo: rpMemo || '红包', scene: 'CHAT' }
+                        body: { receiverId: toUser.userId, amount: toMicro(rpAmt), memo: rpMemo || '红包', scene: 'CHAT', payPwd: rpPwd }
                       });
                       showToast('红包已发送');
                       await refreshMe();

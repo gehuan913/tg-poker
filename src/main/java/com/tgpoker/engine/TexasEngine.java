@@ -50,6 +50,7 @@ public final class TexasEngine {
         s.showdown = false;
         s.lastAggressor = -1;
         s.winners.clear();
+        s.potWinners.clear();
         s.insurancePending = false;
 
         for (SeatState st : s.seats) {
@@ -92,6 +93,17 @@ public final class TexasEngine {
         s.currentBet = s.bigBlind;
         s.minRaise = s.bigBlind;
         s.straddleSeat = -1;
+
+        // 补盲：手牌进行中入座的玩家，下一手先补一个大盲（dead blind）。
+        // 只补投注额，不抬高 currentBet，所以不会改变其他玩家的跟注成本。
+        for (SeatState st : s.seats) {
+            if (st.postBlindNextHand) {
+                st.postBlindNextHand = false;
+                if (st.inHand && st.seat != sb && st.seat != bb && st.stack > 0) {
+                    postBlind(s, st.seat, s.bigBlind, "补盲");
+                }
+            }
+        }
 
         // Straddle：UTG（大盲左手）强制下 2BB，相当于第三盲注。
         // 它不算 VPIP（属于强制投入），行动顺序也从 straddle 的下一位开始。
@@ -434,9 +446,15 @@ public final class TexasEngine {
         s.showdown = true;
         s.actingSeat = -1;
 
-        // 注意：这里不预先 showCards。按技术方案 §9.4，未秀牌是玩家隐私，
-        // 结算后只亮赢家（All-in 亮牌除外，由视图层按 allIn 单独放行），
-        // 输家自动 muck —— 和真实牌桌一致，也避免"公开 serverSeed 就等于公开所有人底牌"。
+        // 产品文档《常见问题》明确：只有进入摊牌阶段的玩家手牌才公开，
+        // 任何一条街弃牌的都不显示。所以这里给"未弃牌"的玩家统一亮牌，
+        // 而不是只亮赢家（只亮赢家是错的，对手无法复盘你的打法）。
+
+        for (SeatState st : s.seats) {
+            if (st.inHand && !st.folded) {
+                st.showCards = true;
+            }
+        }
 
         int n = s.seats.size();
         long[] contributed = new long[n];
@@ -455,6 +473,7 @@ public final class TexasEngine {
             }
         }
 
+        s.potWinners.clear();
         for (Pot p : pots) {
             long best = -1;
             List<Integer> winners = new ArrayList<>();
@@ -467,6 +486,7 @@ public final class TexasEngine {
                     winners.add(idx);
                 }
             }
+            s.potWinners.add(new ArrayList<>(winners));
             if (winners.isEmpty() || best < 0) {
                 continue;
             }
@@ -479,8 +499,6 @@ public final class TexasEngine {
                 if (!s.winners.contains(w.seat)) {
                     s.winners.add(w.seat);
                 }
-                // 只让赢家亮牌；输家保持 muck
-                w.showCards = true;
                 s.logMsg(w.nick + " 赢得 " + Money.fmt(gain) + "（"
                         + HandEvaluator.name(best, s.variant) + "）");
             }

@@ -3,6 +3,7 @@ package com.tgpoker.web;
 import com.tgpoker.model.InsuranceBetRecord;
 import com.tgpoker.mapper.InsuranceBetMapper;
 import com.tgpoker.room.InsuranceOdds;
+import com.tgpoker.room.InsuranceQuoteView;
 import com.tgpoker.room.TableActor;
 import com.tgpoker.room.TableLedgerRow;
 import com.tgpoker.room.TableManager;
@@ -43,6 +44,7 @@ public class TableController {
     private final TableManager tableManager;
     private final RedPacketService redPacketService;
     private final InsuranceBetMapper insuranceBetMapper;
+    private final com.tgpoker.service.ClubService clubService;
 
     @GetMapping("/lobby/tables")
     public ApiResponse<List<TableActor.LobbyItem>> tables(@RequestParam(required = false) Long clubId,
@@ -162,24 +164,13 @@ public class TableController {
 
     /** 保险报价：当前是否可买、outs、赔率、应付保费。 */
     @GetMapping("/table/{tableId}/insurance/quote")
-    public ApiResponse<Map<String, Object>> insuranceQuote(@PathVariable String tableId,
+    public ApiResponse<InsuranceQuoteView> insuranceQuote(@PathVariable String tableId,
                                                            @RequestAttribute("userId") Long userId) {
         TableActor actor = tableManager.get(tableId);
         if (actor == null) {
             throw new IllegalStateException("牌桌不存在");
         }
-        InsuranceOdds.Quote q = actor.quoteInsurance(userId);
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("available", q.available);
-        m.put("outs", q.outs);
-        m.put("odds", q.odds);
-        m.put("oddsText", q.oddsText());
-        m.put("maxCoverage", q.maxCoverage);
-        m.put("maxCoverageText", Money.fmt(q.maxCoverage));
-        m.put("premium", q.premium);
-        m.put("premiumText", Money.fmt(q.premium));
-        m.put("reason", q.reason);
-        return ApiResponse.ok(m);
+        return ApiResponse.ok(actor.quoteInsurance(userId));
     }
 
     @PostMapping("/table/{tableId}/insurance")
@@ -190,8 +181,39 @@ public class TableController {
         if (actor == null) {
             throw new IllegalStateException("牌桌不存在");
         }
+        int potIndex = Integer.parseInt(String.valueOf(body.getOrDefault("potIndex", "0")));
         long coverage = Long.parseLong(String.valueOf(body.getOrDefault("coverage", "0")));
-        actor.buyInsurance(userId, coverage);
+        actor.buyInsurance(userId, potIndex, coverage);
+        return ApiResponse.ok(null);
+    }
+
+    /** 房主/管理员暂停牌桌。 */
+    @PostMapping("/table/{tableId}/pause")
+    public ApiResponse<Void> pause(@PathVariable String tableId,
+                                   @RequestAttribute("userId") Long userId) {
+        TableActor actor = tableManager.get(tableId);
+        if (actor == null) {
+            throw new IllegalArgumentException("牌桌不存在");
+        }
+        if (!clubService.isAdmin(actor.getConfig().clubId, userId)) {
+            throw new SecurityException("只有俱乐部管理员可以暂停牌桌");
+        }
+        actor.pause();
+        return ApiResponse.ok(null);
+    }
+
+    /** 房主/管理员恢复牌桌。 */
+    @PostMapping("/table/{tableId}/resume")
+    public ApiResponse<Void> resume(@PathVariable String tableId,
+                                    @RequestAttribute("userId") Long userId) {
+        TableActor actor = tableManager.get(tableId);
+        if (actor == null) {
+            throw new IllegalArgumentException("牌桌不存在");
+        }
+        if (!clubService.isAdmin(actor.getConfig().clubId, userId)) {
+            throw new SecurityException("只有俱乐部管理员可以恢复牌桌");
+        }
+        actor.resume();
         return ApiResponse.ok(null);
     }
 
@@ -203,7 +225,8 @@ public class TableController {
         long receiverId = Long.parseLong(String.valueOf(body.getOrDefault("receiverId", "0")));
         long amount = Long.parseLong(String.valueOf(body.getOrDefault("amount", "0")));
         String memo = body.get("memo") == null ? "" : String.valueOf(body.get("memo"));
-        return ApiResponse.ok(redPacketService.send(userId, receiverId, amount, memo, "TABLE", tableId));
+        String payPwd = body.get("payPwd") == null ? "" : String.valueOf(body.get("payPwd"));
+        return ApiResponse.ok(redPacketService.send(userId, receiverId, amount, memo, "TABLE", tableId, payPwd));
     }
 
     /** 我的保险记录（跨桌）。 */

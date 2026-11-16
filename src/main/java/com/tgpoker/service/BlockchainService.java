@@ -48,6 +48,7 @@ public class BlockchainService {
     private final WithdrawOrderMapper withdrawMapper;
     private final AccountMapper accountMapper;
     private final WalletService walletService;
+    private final NotificationService notificationService;
 
     @Value("${app.blockchain.ready:false}")
     private boolean ready;
@@ -112,6 +113,8 @@ public class BlockchainService {
             return false;
         }
         walletService.deposit(userId, amount, "dep-" + txHash);
+        notificationService.push(userId, "DEPOSIT", "充值到账",
+                "已到账 " + com.tgpoker.util.Money.fmt(amount) + " USDT", txHash);
         log.info("充值入账 user={} amount={} tx={}", userId, amount, txHash);
         return true;
     }
@@ -152,6 +155,8 @@ public class BlockchainService {
             }
         }
 
+        notificationService.push(userId, "WITHDRAW", "提现申请已提交",
+                "金额 " + com.tgpoker.util.Money.fmt(amount) + " USDT，等待审核", String.valueOf(o.getId()));
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("orderId", o.getId());
         m.put("balance", after);

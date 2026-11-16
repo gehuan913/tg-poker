@@ -70,6 +70,24 @@ public class NiuniuController {
     }
 
     /**
+     * 牛牛选庄答复。
+     *
+     * @param body {"accept": true} 接受上庄，false 放弃
+     */
+    @PostMapping("/{tableId}/banker/choose")
+    public ApiResponse<Void> chooseBanker(@PathVariable String tableId,
+                                          @RequestAttribute("userId") Long userId,
+                                          @RequestBody Map<String, Object> body) {
+        NiuniuRoom room = niuniuManager.get(tableId);
+        if (room == null) {
+            throw new IllegalArgumentException("牌桌不存在");
+        }
+        boolean accept = body.get("accept") == null || Boolean.parseBoolean(String.valueOf(body.get("accept")));
+        room.chooseBanker(userId, accept);
+        return ApiResponse.ok(null);
+    }
+
+    /**
      * 上庄 / 下庄。
      *
      * @param body {"on": true} 申请上庄，false 取消

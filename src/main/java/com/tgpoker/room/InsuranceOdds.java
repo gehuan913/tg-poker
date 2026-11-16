@@ -15,7 +15,8 @@ import java.util.List;
  * 因为反超概率越高。之所以要单独算 outs 而不用"胜率百分比"，是因为产品文案
  * 与结算口径都按 outs 表达。</p>
  *
- * <p>只支持 turn 圈（还剩一张牌）。river 圈没有"未发公牌"，不存在保险。</p>
+ * <p>产品文档的窗口是「转牌或河牌保险」：翻牌圈 All-in 可买<b>转牌保险</b>（保转牌那张），
+ * 转牌圈 All-in 可买<b>河牌保险</b>（保河牌那张）。当前只实现了后者，前者待补。</p>
  */
 public final class InsuranceOdds {
 
@@ -24,18 +25,41 @@ public final class InsuranceOdds {
             0, 30, 16, 10, 8, 6, 5, 4, 3.5, 3, 2.5, 2.2, 2, 1.8, 1.6
     };
 
-    /** 短牌：牌少、反超概率高，同样 outs 的赔率要低一档。 */
-    private static final double[] SHORT_ODDS = {
-            0, 25, 14, 9, 7.2, 5.5, 4.6, 3.8, 3.3, 2.8, 2.4, 2.1, 1.9, 1.7, 1.55
+    /**
+     * 短牌赔率按「每个底池的 All-in 人数」分三档，数值照抄产品文档《保险玩法》。
+     * 索引 = outs（1~14）；注意高 outs 的赔率小于 1，意味着保费会超过保额，产品就是这样劝退的。
+     */
+    private static final double[] SHORT_ODDS_2P = {
+            0, 20, 9.5, 6.5, 4, 3.2, 2.5, 2.2, 1.8, 1.5, 1.3, 1.1, 1, 0.9, 0.85
+    };
+    private static final double[] SHORT_ODDS_3P = {
+            0, 18.5, 9, 5.5, 3.8, 3, 2.3, 2, 1.7, 1.3, 1.2, 1, 0.9, 0.85, 0.8
+    };
+    private static final double[] SHORT_ODDS_4P = {
+            0, 17, 8, 4, 3.5, 2.8, 2.2, 1.8, 1.6, 1.2, 1.1, 0.95, 0.85, 0.8, 0.7
     };
 
     private InsuranceOdds() {
     }
 
     public static double odds(Variant variant, int outs) {
-        double[] table = variant == Variant.SHORT ? SHORT_ODDS : LONG_ODDS;
+        return odds(variant, outs, 2);
+    }
+
+    /**
+     * 按人数取赔率。
+     *
+     * <p>长牌不分人数；短牌按 2/3/4 人池取不同列（产品文档明确给了三列）。</p>
+     */
+    public static double odds(Variant variant, int outs, int players) {
         if (outs <= 0) {
             return 0;
+        }
+        double[] table;
+        if (variant == Variant.SHORT) {
+            table = players >= 4 ? SHORT_ODDS_4P : players == 3 ? SHORT_ODDS_3P : SHORT_ODDS_2P;
+        } else {
+            table = LONG_ODDS;
         }
         if (outs >= table.length) {
             return table[table.length - 1];
@@ -85,8 +109,7 @@ public final class InsuranceOdds {
      * 多人 All-in 报价。
      *
      * <p>领先方按当前牌力选出，outs = 剩余牌里"任何一家反超领先方"的牌数。
-     * 短牌按 2/3/4 人池分档：以 2 人为基准，3 人 ×0.92、4 人 ×0.84
-     * （对应文档 §7.6 的 3.8 / 3.5 / 3.2 比例）。精确分档表仍需精算，见附录 C。</p>
+     * 短牌赔率按 2/3/4 人池分三张表，数值直接取自产品文档《保险玩法》。</p>
      *
      * @param holes   各家底牌（已亮牌）
      * @param seats   对应座位号
@@ -96,11 +119,11 @@ public final class InsuranceOdds {
                                    List<Card> board, long pot, int players) {
         Quote q = new Quote();
         if (board.size() != 4) {
-            q.reason = "只在转牌圈（河牌前）提供保险";
+            q.reason = "只在转牌圈（河牌前）提供保险，当前版本暂不支持翻牌圈转牌保险";
             return q;
         }
-        if (holes.size() < 2 || holes.size() > 4) {
-            q.reason = "只支持 2~4 人 All-in";
+        if (holes.size() < 2 || holes.size() > 9) {
+            q.reason = "该底池参与人数不支持投保";
             return q;
         }
         for (Card[] h : holes) {
@@ -110,7 +133,7 @@ public final class InsuranceOdds {
             }
         }
         if (variant == Variant.SHORT && players > 4) {
-            q.reason = "短牌单池最多 4 人投保";
+            q.reason = "短牌该底池超过 4 人，不触发保险";
             return q;
         }
 
@@ -166,7 +189,8 @@ public final class InsuranceOdds {
             return q;
         }
         q.odds = odds(variant, outs, players);
-        q.tieOdds = ties > 0 ? Math.max(1.2, q.odds * 0.8) : 0;
+        // 平局赔率同样查 outs 表：文档示例里 3 张平局 outs 对应 10 倍，正好等于 outs=3 的赔率
+        q.tieOdds = ties > 0 ? odds(variant, ties, players) : 0;
         q.coverage = q.maxCoverage;
         q.premium = ceilDiv(q.coverage, q.odds);
         q.premiumTie = 0;
@@ -175,15 +199,6 @@ public final class InsuranceOdds {
         return q;
     }
 
-    /** 按人数分档的赔率（短牌 3/4 人池打折，长牌不区分人数）。 */
-    public static double odds(Variant variant, int outs, int players) {
-        double base = odds(variant, outs);
-        if (variant != Variant.SHORT) {
-            return base;
-        }
-        double factor = players >= 4 ? 0.84 : players == 3 ? 0.92 : 1.0;
-        return Math.max(1.2, Math.round(base * factor * 10) / 10.0);
-    }
 
     /** 计算某手牌在给定公牌（+可选河牌）下的最佳牌力。 */
     public static long score(Variant variant, Card[] hole, List<Card> board, Card extra) {
@@ -207,7 +222,14 @@ public final class InsuranceOdds {
         for (int s = 0; s < 4; s++) {
             for (int r = minRank; r <= 14; r++) {
                 Card c = new Card(r, s);
-                boolean used = board.contains(c);
+                // 注意：Card 没有重写 equals，board.contains() 比的是引用，永远 false
+                boolean used = false;
+                for (Card bc : board) {
+                    if (bc.r == c.r && bc.s == c.s) {
+                        used = true;
+                        break;
+                    }
+                }
                 for (Card[] h : holes) {
                     if (contains(h, c)) {
                         used = true;

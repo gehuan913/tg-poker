@@ -43,6 +43,12 @@ public class SeatState {
 
     /** 本手是否入池 / 是否翻前加注，结算时累加到上面的计数器。 */
     public boolean vpipThisHand;
+
+    /** 连续超时次数：达到 3 次自动站起转旁观。 */
+    public int timeoutCount;
+
+    /** 手牌进行中入座：下一手开始先补一个大盲（dead blind）。 */
+    public boolean postBlindNextHand;
     public boolean pfrThisHand;
 
     public void resetForHand() {

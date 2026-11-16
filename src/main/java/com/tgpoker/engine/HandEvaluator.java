@@ -29,9 +29,15 @@ public final class HandEvaluator {
     private static final String[] LONG_NAMES = {
             "高牌", "一对", "两对", "三条", "顺子", "同花", "葫芦", "四条", "同花顺"
     };
-    /** 短牌：顺子 &lt; 三条 &lt; 葫芦 &lt; 同花。 */
+    /**
+     * 短牌：三条 &lt; 顺子 &lt; 葫芦 &lt; 同花。
+     *
+     * <p>产品文档《短牌说明》只列了两处牌型差异：<b>同花大于葫芦</b>、A 可代替 5 组成 A6789。
+     * 三条与顺子的相对大小未列为差异，即与标准德州一致（顺子 &gt; 三条）。</p>
+     */
     private static final String[] SHORT_NAMES = {
-            "高牌", "一对", "两对", "顺子", "三条", "葫芦", "同花", "四条", "同花顺"
+            // 注意索引：短牌 5=葫芦、6=同花（与长牌相反），不能直接复用 LONG_NAMES
+            "高牌", "一对", "两对", "三条", "顺子", "葫芦", "同花", "四条", "同花顺"
     };
 
     private HandEvaluator() {
@@ -116,8 +122,9 @@ public final class HandEvaluator {
         boolean isPair = groups.get(0)[0] == 2;
 
         if (variant == Variant.SHORT) {
-            // 短牌：顺子 3 < 三条 4 < 葫芦 5 < 同花 6
-            // 注意这里用的是"短牌自己的序号"，不能复用长牌常量（长牌 FLUSH=5 / FULL_HOUSE=6）。
+            // 短牌：三条 3 < 顺子 4 < 葫芦 5 < 同花 6
+            // 与长牌的区别只有"同花 > 葫芦"这一处；三条/顺子的先后与长牌相同。
+            // 仍用短牌自己的序号，不能复用长牌常量（长牌 FLUSH=5 / FULL_HOUSE=6）。
             if (straight && flush) {
                 cat = 8;
                 tk[0] = straightHigh;
@@ -134,14 +141,14 @@ public final class HandEvaluator {
                 cat = 5;
                 tk[0] = groups.get(0)[1];
                 tk[1] = groups.get(1)[1];
-            } else if (isTrips) {
+            } else if (straight) {
                 cat = 4;
+                tk[0] = straightHigh;
+            } else if (isTrips) {
+                cat = 3;
                 tk[0] = groups.get(0)[1];
                 tk[1] = groups.get(1)[1];
                 tk[2] = groups.get(2)[1];
-            } else if (straight) {
-                cat = 3;
-                tk[0] = straightHigh;
             } else if (isTwoPair) {
                 cat = 2;
                 tk[0] = groups.get(0)[1];

@@ -42,9 +42,9 @@ public class NiuniuManager {
                 }
             }
         };
-        rooms.put("N01", new NiuniuRoom("N01", "牛牛(0.2/0.4)", 10_000_000L, 100_000_000L, 5_000_000L,
+        rooms.put("N01", new NiuniuRoom("N01", "牛牛(0.2/0.4)", 10_000_000L, 100_000_000L, 5_000_000L, 1_000_000L,
                 walletService, timer, recorder));
-        rooms.put("N02", new NiuniuRoom("N02", "牛牛(1/2)", 40_000_000L, 400_000_000L, 20_000_000L,
+        rooms.put("N02", new NiuniuRoom("N02", "牛牛(1/2)", 40_000_000L, 400_000_000L, 20_000_000L, 5_000_000L,
                 walletService, timer, recorder));
         log.info("牛牛桌初始化完成，共 {} 桌", rooms.size());
     }

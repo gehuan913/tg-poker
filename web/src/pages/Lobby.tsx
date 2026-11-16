@@ -4,7 +4,7 @@ import { useApp } from '../store.ts';
 import { fmt, toMicro } from '../utils.ts';
 import { Modal } from '../components/Modal.tsx';
 import { haptic } from '../tg.ts';
-import type { ClubItem } from '../types.ts';
+import type { NotificationItem, ClubItem } from '../types.ts';
 
 const VARIANTS = [
   { key: 'ALL', label: '全部' },
@@ -25,6 +25,9 @@ export function Lobby() {
   const [clubs, setClubs] = useState<ClubItem[]>([]);
   const [records, setRecords] = useState<any[] | null>(null);
   const [showBalance, setShowBalance] = useState(true);
+  const [ntfOpen, setNtfOpen] = useState(false);
+  const [ntfUnread, setNtfUnread] = useState(0);
+  const [ntfs, setNtfs] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     refreshMe();
@@ -35,8 +38,13 @@ export function Lobby() {
         if (list.length > 0 && !club) setClub(list[0]);
       })
       .catch(() => { setClubs([]); setClub(null); });
+    const loadNtf = () => api<any>('/api/notifications?limit=30')
+      .then(r => { setNtfs(r.items || []); setNtfUnread(r.unread || 0); })
+      .catch(() => undefined);
+    loadNtf();
     const t = window.setInterval(() => loadLobby(variant === 'NIUNIU' ? 'ALL' : variant, club?.id), 5000);
-    return () => window.clearInterval(t);
+    const tn = window.setInterval(loadNtf, 15000);
+    return () => { window.clearInterval(t); window.clearInterval(tn); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variant, club?.id]);
 
@@ -124,6 +132,22 @@ export function Lobby() {
               记录
             </button>
           )}
+          <button
+            className="btn sm ghost bell"
+            onClick={async () => {
+              haptic();
+              try {
+                const r = await api<any>('/api/notifications?limit=30');
+                setNtfs(r.items || []);
+                setNtfUnread(r.unread || 0);
+                setNtfOpen(true);
+              } catch (e: any) {
+                showToast(e.message);
+              }
+            }}
+          >
+            消息{ntfUnread > 0 ? <i className="bell-dot">{ntfUnread > 99 ? '99+' : ntfUnread}</i> : null}
+          </button>
           <button className="btn sm ghost" onClick={() => { haptic(); loadLobby(variant === 'NIUNIU' ? 'ALL' : variant, club?.id); }}>
             刷新
           </button>
@@ -256,6 +280,35 @@ export function Lobby() {
             </div>
           )}
           <div className="small muted">手续费 1 USDT，到账 1–10 分钟。当前未接链上签名，仅记账。</div>
+        </Modal>
+      )}
+
+      {ntfOpen && (
+        <Modal
+          title="消息中心"
+          onClose={() => setNtfOpen(false)}
+          okText="全部已读"
+          onOk={async () => {
+            await api('/api/notifications/read', { method: 'POST' }).catch(() => undefined);
+            setNtfUnread(0);
+            setNtfs(prev => prev.map(n => ({ ...n, readFlag: 1 })));
+            return true;
+          }}
+        >
+          {ntfs.length === 0 && <div className="empty">暂无消息</div>}
+          {ntfs.map(n => (
+            <div className={'list-item' + (n.readFlag ? '' : ' unread')} key={n.id}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div>{n.title}</div>
+                <div className="small muted ellipsis">{n.body}</div>
+                <div className="small muted">{(n.createdAt || '').replace('T', ' ').slice(5, 16)}</div>
+              </div>
+              {!n.readFlag && <span className="dot-new" />}
+            </div>
+          ))}
+          <div className="small muted" style={{ marginTop: 8 }}>
+            消息中心只显示接收记录；发送记录请到「账单」查看
+          </div>
         </Modal>
       )}
 

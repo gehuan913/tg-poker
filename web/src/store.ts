@@ -26,7 +26,7 @@ interface AppState {
   doSit: (buyIn: number) => void;
   doRebuy: (amount: number) => void;
   doQuote: () => void;
-  doInsurance: (coverage: number) => void;
+  doInsurance: (potIndex: number, coverage: number) => void;
   doSubmitSeed: (seed: string) => void;
   doChat: (text: string) => void;
 }
@@ -132,9 +132,9 @@ export const useApp = create<AppState>((set, get) => ({
     socket?.quoteInsurance();
   },
 
-  doInsurance: (coverage) => {
+  doInsurance: (potIndex, coverage) => {
     haptic('tap');
-    if (!socket?.buyInsurance(coverage)) get().showToast('连接已断开');
+    if (!socket?.buyInsurance(potIndex, coverage)) get().showToast('连接已断开');
   },
 
   doSubmitSeed: (seed) => {
